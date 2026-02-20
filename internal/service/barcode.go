@@ -22,35 +22,43 @@ const (
 )
 
 type BarcodeLookupResult struct {
-	Provider              string   `json:"provider"`
-	Barcode               string   `json:"barcode"`
-	Description           string   `json:"description"`
-	Brand                 string   `json:"brand"`
-	ServingAmount         float64  `json:"serving_amount"`
-	ServingUnit           string   `json:"serving_unit"`
-	Calories              float64  `json:"calories"`
-	ProteinG              float64  `json:"protein_g"`
-	CarbsG                float64  `json:"carbs_g"`
-	FatG                  float64  `json:"fat_g"`
-	SourceID              int64    `json:"source_id"`
-	SourceTier            string   `json:"source_tier,omitempty"`
-	ProviderConfidence    float64  `json:"provider_confidence,omitempty"`
-	NutritionCompleteness string   `json:"nutrition_completeness,omitempty"`
-	LookupTrail           []string `json:"lookup_trail,omitempty"`
-	FromOverride          bool     `json:"from_override"`
-	FromCache             bool     `json:"from_cache"`
+	Provider              string         `json:"provider"`
+	Barcode               string         `json:"barcode"`
+	Description           string         `json:"description"`
+	Brand                 string         `json:"brand"`
+	ServingAmount         float64        `json:"serving_amount"`
+	ServingUnit           string         `json:"serving_unit"`
+	Calories              float64        `json:"calories"`
+	ProteinG              float64        `json:"protein_g"`
+	CarbsG                float64        `json:"carbs_g"`
+	FatG                  float64        `json:"fat_g"`
+	FiberG                float64        `json:"fiber_g"`
+	SugarG                float64        `json:"sugar_g"`
+	SodiumMg              float64        `json:"sodium_mg"`
+	Micronutrients        Micronutrients `json:"micronutrients,omitempty"`
+	SourceID              int64          `json:"source_id"`
+	SourceTier            string         `json:"source_tier,omitempty"`
+	ProviderConfidence    float64        `json:"provider_confidence,omitempty"`
+	NutritionCompleteness string         `json:"nutrition_completeness,omitempty"`
+	LookupTrail           []string       `json:"lookup_trail,omitempty"`
+	FromOverride          bool           `json:"from_override"`
+	FromCache             bool           `json:"from_cache"`
 }
 
 type BarcodeOverrideInput struct {
-	Description   string
-	Brand         string
-	ServingAmount float64
-	ServingUnit   string
-	Calories      float64
-	ProteinG      float64
-	CarbsG        float64
-	FatG          float64
-	Notes         string
+	Description    string
+	Brand          string
+	ServingAmount  float64
+	ServingUnit    string
+	Calories       float64
+	ProteinG       float64
+	CarbsG         float64
+	FatG           float64
+	FiberG         float64
+	SugarG         float64
+	SodiumMg       float64
+	Micronutrients string
+	Notes          string
 }
 
 type BarcodeLookupOptions struct {
@@ -286,15 +294,19 @@ func (a *usdaClientAdapter) LookupBarcode(ctx context.Context, barcode string) (
 		return BarcodeLookupResult{}, nil, err
 	}
 	return BarcodeLookupResult{
-		Description:   food.Description,
-		Brand:         food.Brand,
-		ServingAmount: food.ServingAmount,
-		ServingUnit:   food.ServingUnit,
-		Calories:      food.Calories,
-		ProteinG:      food.ProteinG,
-		CarbsG:        food.CarbsG,
-		FatG:          food.FatG,
-		SourceID:      food.FDCID,
+		Description:    food.Description,
+		Brand:          food.Brand,
+		ServingAmount:  food.ServingAmount,
+		ServingUnit:    food.ServingUnit,
+		Calories:       food.Calories,
+		ProteinG:       food.ProteinG,
+		CarbsG:         food.CarbsG,
+		FatG:           food.FatG,
+		FiberG:         food.FiberG,
+		SugarG:         food.SugarG,
+		SodiumMg:       food.SodiumMg,
+		Micronutrients: convertUSDAMicros(food.Micronutrients),
+		SourceID:       food.FDCID,
 	}, raw, nil
 }
 
@@ -308,15 +320,19 @@ func (a *openFoodFactsClientAdapter) LookupBarcode(ctx context.Context, barcode 
 		return BarcodeLookupResult{}, nil, err
 	}
 	return BarcodeLookupResult{
-		Description:   food.Description,
-		Brand:         food.Brand,
-		ServingAmount: food.ServingAmount,
-		ServingUnit:   food.ServingUnit,
-		Calories:      food.Calories,
-		ProteinG:      food.ProteinG,
-		CarbsG:        food.CarbsG,
-		FatG:          food.FatG,
-		SourceID:      food.SourceID,
+		Description:    food.Description,
+		Brand:          food.Brand,
+		ServingAmount:  food.ServingAmount,
+		ServingUnit:    food.ServingUnit,
+		Calories:       food.Calories,
+		ProteinG:       food.ProteinG,
+		CarbsG:         food.CarbsG,
+		FatG:           food.FatG,
+		FiberG:         food.FiberG,
+		SugarG:         food.SugarG,
+		SodiumMg:       food.SodiumMg,
+		Micronutrients: convertOpenFoodFactsMicros(food.Micronutrients),
+		SourceID:       food.SourceID,
 	}, raw, nil
 }
 
@@ -330,15 +346,19 @@ func (a *upcItemDBClientAdapter) LookupBarcode(ctx context.Context, barcode stri
 		return BarcodeLookupResult{}, nil, err
 	}
 	return BarcodeLookupResult{
-		Description:   food.Description,
-		Brand:         food.Brand,
-		ServingAmount: food.ServingAmount,
-		ServingUnit:   food.ServingUnit,
-		Calories:      food.Calories,
-		ProteinG:      food.ProteinG,
-		CarbsG:        food.CarbsG,
-		FatG:          food.FatG,
-		SourceID:      food.SourceID,
+		Description:    food.Description,
+		Brand:          food.Brand,
+		ServingAmount:  food.ServingAmount,
+		ServingUnit:    food.ServingUnit,
+		Calories:       food.Calories,
+		ProteinG:       food.ProteinG,
+		CarbsG:         food.CarbsG,
+		FatG:           food.FatG,
+		FiberG:         food.FiberG,
+		SugarG:         food.SugarG,
+		SodiumMg:       food.SodiumMg,
+		Micronutrients: convertUPCItemDBMicros(food.Micronutrients),
+		SourceID:       food.SourceID,
 	}, raw, nil
 }
 
@@ -349,14 +369,15 @@ func isValidBarcode(code string) bool {
 func lookupBarcodeCache(db *sql.DB, provider, barcode string) (BarcodeLookupResult, bool, error) {
 	var row BarcodeLookupResult
 	var expiresAtRaw string
+	var microsRaw string
 	err := db.QueryRow(`
-SELECT provider, barcode, description, brand, serving_amount, serving_unit, calories, protein_g, carbs_g, fat_g, source_id, expires_at
+SELECT provider, barcode, description, brand, serving_amount, serving_unit, calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g, sodium_mg, IFNULL(micronutrients_json,''), source_id, expires_at
 FROM barcode_cache
 WHERE provider = ? AND barcode = ?
 `, provider, barcode).Scan(
 		&row.Provider, &row.Barcode, &row.Description, &row.Brand,
 		&row.ServingAmount, &row.ServingUnit,
-		&row.Calories, &row.ProteinG, &row.CarbsG, &row.FatG,
+		&row.Calories, &row.ProteinG, &row.CarbsG, &row.FatG, &row.FiberG, &row.SugarG, &row.SodiumMg, &microsRaw,
 		&row.SourceID, &expiresAtRaw,
 	)
 	if err == sql.ErrNoRows {
@@ -365,6 +386,11 @@ WHERE provider = ? AND barcode = ?
 	if err != nil {
 		return BarcodeLookupResult{}, false, fmt.Errorf("lookup barcode cache: %w", err)
 	}
+	micros, err := decodeMicronutrientsJSON(microsRaw)
+	if err != nil {
+		return BarcodeLookupResult{}, false, fmt.Errorf("decode barcode cache micronutrients: %w", err)
+	}
+	row.Micronutrients = micros
 	expiresAt, err := time.Parse(time.RFC3339, expiresAtRaw)
 	if err != nil {
 		return BarcodeLookupResult{}, false, fmt.Errorf("parse barcode cache expiry: %w", err)
@@ -380,9 +406,13 @@ func upsertBarcodeCache(db *sql.DB, result BarcodeLookupResult, raw []byte, expi
 	if json.Valid(raw) {
 		rawStr = string(raw)
 	}
-	_, err := db.Exec(`
-INSERT INTO barcode_cache(provider, barcode, description, brand, serving_amount, serving_unit, calories, protein_g, carbs_g, fat_g, source_id, raw_json, fetched_at, expires_at)
-VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	microsJSON, err := EncodeMicronutrientsJSON(result.Micronutrients)
+	if err != nil {
+		return fmt.Errorf("encode barcode cache micronutrients: %w", err)
+	}
+	_, err = db.Exec(`
+INSERT INTO barcode_cache(provider, barcode, description, brand, serving_amount, serving_unit, calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g, sodium_mg, micronutrients_json, source_id, raw_json, fetched_at, expires_at)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(provider, barcode) DO UPDATE SET
   description=excluded.description,
   brand=excluded.brand,
@@ -392,11 +422,15 @@ ON CONFLICT(provider, barcode) DO UPDATE SET
   protein_g=excluded.protein_g,
   carbs_g=excluded.carbs_g,
   fat_g=excluded.fat_g,
+  fiber_g=excluded.fiber_g,
+  sugar_g=excluded.sugar_g,
+  sodium_mg=excluded.sodium_mg,
+  micronutrients_json=excluded.micronutrients_json,
   source_id=excluded.source_id,
   raw_json=excluded.raw_json,
   fetched_at=excluded.fetched_at,
   expires_at=excluded.expires_at
-`, result.Provider, result.Barcode, result.Description, result.Brand, result.ServingAmount, result.ServingUnit, result.Calories, result.ProteinG, result.CarbsG, result.FatG, result.SourceID, rawStr, time.Now().Format(time.RFC3339), expiresAt.Format(time.RFC3339))
+`, result.Provider, result.Barcode, result.Description, result.Brand, result.ServingAmount, result.ServingUnit, result.Calories, result.ProteinG, result.CarbsG, result.FatG, result.FiberG, result.SugarG, result.SodiumMg, microsJSON, result.SourceID, rawStr, time.Now().Format(time.RFC3339), expiresAt.Format(time.RFC3339))
 	if err != nil {
 		return fmt.Errorf("upsert barcode cache: %w", err)
 	}
@@ -421,13 +455,17 @@ func SetBarcodeOverride(db *sql.DB, provider, barcode string, in BarcodeOverride
 	if strings.TrimSpace(in.ServingUnit) == "" {
 		return fmt.Errorf("serving unit is required")
 	}
-	if in.Calories < 0 || in.ProteinG < 0 || in.CarbsG < 0 || in.FatG < 0 {
-		return fmt.Errorf("calories and macros must be >= 0")
+	if in.Calories < 0 || in.ProteinG < 0 || in.CarbsG < 0 || in.FatG < 0 || in.FiberG < 0 || in.SugarG < 0 || in.SodiumMg < 0 {
+		return fmt.Errorf("calories and nutrients must be >= 0")
+	}
+	microsJSON, err := normalizeMicronutrientsJSON(in.Micronutrients)
+	if err != nil {
+		return err
 	}
 
-	_, err := db.Exec(`
-INSERT INTO barcode_overrides(provider, barcode, description, brand, serving_amount, serving_unit, calories, protein_g, carbs_g, fat_g, notes, updated_at)
-VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	_, err = db.Exec(`
+INSERT INTO barcode_overrides(provider, barcode, description, brand, serving_amount, serving_unit, calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g, sodium_mg, micronutrients_json, notes, updated_at)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(provider, barcode) DO UPDATE SET
   description=excluded.description,
   brand=excluded.brand,
@@ -437,9 +475,13 @@ ON CONFLICT(provider, barcode) DO UPDATE SET
   protein_g=excluded.protein_g,
   carbs_g=excluded.carbs_g,
   fat_g=excluded.fat_g,
+  fiber_g=excluded.fiber_g,
+  sugar_g=excluded.sugar_g,
+  sodium_mg=excluded.sodium_mg,
+  micronutrients_json=excluded.micronutrients_json,
   notes=excluded.notes,
   updated_at=excluded.updated_at
-`, provider, barcode, strings.TrimSpace(in.Description), strings.TrimSpace(in.Brand), in.ServingAmount, strings.TrimSpace(in.ServingUnit), in.Calories, in.ProteinG, in.CarbsG, in.FatG, strings.TrimSpace(in.Notes), time.Now().Format(time.RFC3339))
+`, provider, barcode, strings.TrimSpace(in.Description), strings.TrimSpace(in.Brand), in.ServingAmount, strings.TrimSpace(in.ServingUnit), in.Calories, in.ProteinG, in.CarbsG, in.FatG, in.FiberG, in.SugarG, in.SodiumMg, microsJSON, strings.TrimSpace(in.Notes), time.Now().Format(time.RFC3339))
 	if err != nil {
 		return fmt.Errorf("set barcode override: %w", err)
 	}
@@ -474,7 +516,7 @@ func ListBarcodeOverrides(db *sql.DB, provider string, limit int) ([]BarcodeLook
 		limit = 100
 	}
 	base := `
-SELECT provider, barcode, description, brand, serving_amount, serving_unit, calories, protein_g, carbs_g, fat_g, source_id
+SELECT provider, barcode, description, brand, serving_amount, serving_unit, calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g, sodium_mg, IFNULL(micronutrients_json,''), source_id
 FROM barcode_overrides`
 	args := make([]any, 0, 2)
 	if provider != "" {
@@ -491,9 +533,15 @@ FROM barcode_overrides`
 	out := make([]BarcodeLookupResult, 0)
 	for rows.Next() {
 		var r BarcodeLookupResult
-		if err := rows.Scan(&r.Provider, &r.Barcode, &r.Description, &r.Brand, &r.ServingAmount, &r.ServingUnit, &r.Calories, &r.ProteinG, &r.CarbsG, &r.FatG, &r.SourceID); err != nil {
+		var microsRaw string
+		if err := rows.Scan(&r.Provider, &r.Barcode, &r.Description, &r.Brand, &r.ServingAmount, &r.ServingUnit, &r.Calories, &r.ProteinG, &r.CarbsG, &r.FatG, &r.FiberG, &r.SugarG, &r.SodiumMg, &microsRaw, &r.SourceID); err != nil {
 			return nil, fmt.Errorf("scan barcode override: %w", err)
 		}
+		micros, err := decodeMicronutrientsJSON(microsRaw)
+		if err != nil {
+			return nil, fmt.Errorf("decode barcode override micronutrients: %w", err)
+		}
+		r.Micronutrients = micros
 		r.FromOverride = true
 		out = append(out, r)
 	}
@@ -505,14 +553,15 @@ FROM barcode_overrides`
 
 func lookupBarcodeOverride(db *sql.DB, provider, barcode string) (BarcodeLookupResult, bool, error) {
 	var row BarcodeLookupResult
+	var microsRaw string
 	err := db.QueryRow(`
-SELECT provider, barcode, description, brand, serving_amount, serving_unit, calories, protein_g, carbs_g, fat_g, source_id
+SELECT provider, barcode, description, brand, serving_amount, serving_unit, calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g, sodium_mg, IFNULL(micronutrients_json,''), source_id
 FROM barcode_overrides
 WHERE provider = ? AND barcode = ?
 `, provider, barcode).Scan(
 		&row.Provider, &row.Barcode, &row.Description, &row.Brand,
 		&row.ServingAmount, &row.ServingUnit,
-		&row.Calories, &row.ProteinG, &row.CarbsG, &row.FatG,
+		&row.Calories, &row.ProteinG, &row.CarbsG, &row.FatG, &row.FiberG, &row.SugarG, &row.SodiumMg, &microsRaw,
 		&row.SourceID,
 	)
 	if err == sql.ErrNoRows {
@@ -521,6 +570,11 @@ WHERE provider = ? AND barcode = ?
 	if err != nil {
 		return BarcodeLookupResult{}, false, fmt.Errorf("lookup barcode override: %w", err)
 	}
+	micros, err := decodeMicronutrientsJSON(microsRaw)
+	if err != nil {
+		return BarcodeLookupResult{}, false, fmt.Errorf("decode barcode override micronutrients: %w", err)
+	}
+	row.Micronutrients = micros
 	return row, true, nil
 }
 
@@ -551,8 +605,33 @@ func deriveNutritionCompleteness(r BarcodeLookupResult) string {
 	if strings.TrimSpace(r.Description) == "" {
 		return "unknown"
 	}
-	if r.ServingAmount > 0 && strings.TrimSpace(r.ServingUnit) != "" {
+	hasNutrition := r.Calories > 0 || r.ProteinG > 0 || r.CarbsG > 0 || r.FatG > 0 || r.FiberG > 0 || r.SugarG > 0 || r.SodiumMg > 0 || len(r.Micronutrients) > 0
+	if r.ServingAmount > 0 && strings.TrimSpace(r.ServingUnit) != "" && hasNutrition {
 		return "complete"
 	}
 	return "partial"
+}
+
+func convertUSDAMicros(in usda.Micronutrients) Micronutrients {
+	out := Micronutrients{}
+	for k, v := range in {
+		out[k] = MicronutrientAmount{Value: v.Value, Unit: v.Unit}
+	}
+	return out
+}
+
+func convertOpenFoodFactsMicros(in openfoodfacts.Micronutrients) Micronutrients {
+	out := Micronutrients{}
+	for k, v := range in {
+		out[k] = MicronutrientAmount{Value: v.Value, Unit: v.Unit}
+	}
+	return out
+}
+
+func convertUPCItemDBMicros(in upcitemdb.Micronutrients) Micronutrients {
+	out := Micronutrients{}
+	for k, v := range in {
+		out[k] = MicronutrientAmount{Value: v.Value, Unit: v.Unit}
+	}
+	return out
 }
