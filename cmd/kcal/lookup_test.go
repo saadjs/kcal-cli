@@ -38,6 +38,32 @@ func TestUSDAHelpTextIncludesSetupAndRateLimit(t *testing.T) {
 	}
 }
 
+func TestResolveBarcodeProvider(t *testing.T) {
+	t.Setenv("KCAL_BARCODE_PROVIDER", "")
+	if got := resolveBarcodeProvider(""); got != "usda" {
+		t.Fatalf("expected default provider usda, got %q", got)
+	}
+	t.Setenv("KCAL_BARCODE_PROVIDER", "openfoodfacts")
+	if got := resolveBarcodeProvider(""); got != "openfoodfacts" {
+		t.Fatalf("expected env provider openfoodfacts, got %q", got)
+	}
+	if got := resolveBarcodeProvider("usda"); got != "usda" {
+		t.Fatalf("expected flag provider usda, got %q", got)
+	}
+}
+
+func TestOpenFoodFactsHelpTextIncludesDocsAndRateLimit(t *testing.T) {
+	out := openFoodFactsHelpText()
+	if !containsAll(out, []string{
+		"openfoodfacts.github.io",
+		"not required",
+		"KCAL_BARCODE_PROVIDER=openfoodfacts",
+		"fair-use limits",
+	}) {
+		t.Fatalf("openfoodfacts help text missing expected guidance: %s", out)
+	}
+}
+
 func containsAll(s string, parts []string) bool {
 	for _, p := range parts {
 		if !strings.Contains(s, p) {

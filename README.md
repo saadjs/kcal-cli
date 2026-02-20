@@ -48,25 +48,31 @@ go build -o kcal .
 - `kcal recipe add|list|show|update|delete|log|recalc`
 - `kcal recipe ingredient add|list|update|delete`
 - `kcal analytics week|month|range`
-- `kcal lookup barcode <code> [--api-key ...] [--json]`
+- `kcal lookup barcode <code> [--provider usda|openfoodfacts] [--api-key ...] [--json]`
+- `kcal lookup providers`
+- `kcal lookup usda-help`
+- `kcal lookup openfoodfacts-help`
 
 Use `--help` on any command for details.
 
-## Barcode Lookup (USDA)
+## Barcode Lookup Providers
 
 ```bash
 export KCAL_USDA_API_KEY=your_key_here
-./kcal lookup barcode 012345678905
-./kcal lookup usda-help
+./kcal lookup barcode 012345678905 --provider usda
+./kcal lookup barcode 3017620422003 --provider openfoodfacts
+./kcal lookup providers
 ```
 
 API key resolution order:
 - `--api-key` flag
 - `KCAL_USDA_API_KEY`
 - `KCAL_BARCODE_API_KEY` (legacy fallback)
+- Provider default can be set with `KCAL_BARCODE_PROVIDER` (`usda` or `openfoodfacts`)
 
 Rate limit note:
 - USDA default limit is `1,000 requests/hour/IP`.
+- Open Food Facts uses fair-use limits and requires a descriptive user-agent.
 - `kcal` caches barcode lookups in SQLite to reduce repeated provider calls.
 
 ## Testing

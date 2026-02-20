@@ -7,15 +7,14 @@ import (
 	"testing"
 
 	"github.com/saad/kcal-cli/internal/db"
-	"github.com/saad/kcal-cli/internal/provider/usda"
 )
 
 type fakeBarcodeClient struct {
 	calls int
-	item  usda.FoodLookup
+	item  BarcodeLookupResult
 }
 
-func (f *fakeBarcodeClient) LookupBarcode(ctx context.Context, barcode string) (usda.FoodLookup, []byte, error) {
+func (f *fakeBarcodeClient) LookupBarcode(ctx context.Context, barcode string) (BarcodeLookupResult, []byte, error) {
 	_ = ctx
 	_ = barcode
 	f.calls++
@@ -26,8 +25,7 @@ func TestLookupBarcodeUsesCache(t *testing.T) {
 	sqldb := newServiceDB(t)
 	defer sqldb.Close()
 
-	client := &fakeBarcodeClient{item: usda.FoodLookup{
-		Barcode:       "012345678905",
+	client := &fakeBarcodeClient{item: BarcodeLookupResult{
 		Description:   "Protein Bar",
 		Brand:         "Brand",
 		ServingAmount: 1,
@@ -36,14 +34,14 @@ func TestLookupBarcodeUsesCache(t *testing.T) {
 		ProteinG:      20,
 		CarbsG:        20,
 		FatG:          7,
-		FDCID:         111,
+		SourceID:      111,
 	}}
 
-	_, err := lookupBarcodeWithClient(sqldb, client, "012345678905")
+	_, err := lookupBarcodeWithClient(sqldb, BarcodeProviderUSDA, client, "012345678905")
 	if err != nil {
 		t.Fatalf("first lookup: %v", err)
 	}
-	_, err = lookupBarcodeWithClient(sqldb, client, "012345678905")
+	_, err = lookupBarcodeWithClient(sqldb, BarcodeProviderUSDA, client, "012345678905")
 	if err != nil {
 		t.Fatalf("second lookup: %v", err)
 	}
@@ -57,7 +55,7 @@ func TestLookupBarcodeValidation(t *testing.T) {
 	defer sqldb.Close()
 
 	client := &fakeBarcodeClient{}
-	_, err := lookupBarcodeWithClient(sqldb, client, "abc")
+	_, err := lookupBarcodeWithClient(sqldb, BarcodeProviderUSDA, client, "abc")
 	if err == nil {
 		t.Fatalf("expected invalid barcode to fail")
 	}
