@@ -60,6 +60,20 @@ Top-level commands:
 
 Use `kcal <command> --help` for command flags and subcommands.
 
+## Saved Templates
+
+Reusable templates for frequent foods and meals:
+
+```bash
+kcal saved-food add --name "Greek Yogurt" --calories 150 --protein 15 --carbs 10 --fat 5 --category breakfast
+kcal saved-food add-from-barcode 3017620422003 --provider openfoodfacts --category snacks
+kcal saved-meal add --name "Yogurt bowl" --category breakfast
+kcal saved-meal component add "Yogurt bowl" --saved-food "Greek Yogurt"
+kcal saved-meal log "Yogurt bowl" --servings 1
+```
+
+Saved foods and saved meals are also included in JSON import/export.
+
 ## Barcode Lookup (Essentials)
 
 Set env vars as needed:

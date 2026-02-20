@@ -8,6 +8,7 @@ nav_exclude: true
 
 - Install `kcal`: [Installation](#installation)
 - Log your first meal and check progress: [Getting Started](#getting-started)
+- Save and reuse frequent foods/meals: [Saved Templates](#saved-templates)
 - Find a command quickly: [Command Reference](#command-reference)
 - Configure DB path and provider defaults: [Config and Paths](#config-and-paths)
 - Set up barcode lookup providers: [Barcode Providers](#barcode-providers)
@@ -84,6 +85,47 @@ kcal body add --weight 172 --unit lb --date 2026-02-20 --time 07:00
 
 ---
 
+## Saved Templates
+
+Create reusable foods and meals, then log them quickly.
+
+### Most Common Commands
+
+```bash
+kcal saved-food add --name "Greek Yogurt" --calories 150 --protein 15 --carbs 10 --fat 5 --category breakfast
+kcal saved-food log "Greek Yogurt" --servings 2 --date 2026-02-20 --time 08:00
+```
+
+```bash
+kcal saved-meal add --name "Yogurt bowl" --category breakfast
+kcal saved-meal component add "Yogurt bowl" --saved-food "Greek Yogurt"
+kcal saved-meal log "Yogurt bowl" --servings 1.5
+```
+
+### Advanced
+
+Create from barcode or existing entries:
+
+```bash
+kcal saved-food add-from-barcode 3017620422003 --provider openfoodfacts --category snacks
+kcal entry list --limit 5
+kcal saved-food add-from-entry 12
+```
+
+Archive and restore:
+
+```bash
+kcal saved-food archive "Greek Yogurt"
+kcal saved-food list --include-archived
+kcal saved-food restore "Greek Yogurt"
+```
+
+See also:
+- [Import and Export](#import-and-export)
+- [Command Reference](#command-reference)
+
+---
+
 ## Command Reference
 
 Find command families quickly, then drill into `--help` for full flag details.
@@ -94,6 +136,7 @@ Find command families quickly, then drill into `--help` for full flag details.
 - [Nutrition Logging](#nutrition-logging)
 - [Goals and Body](#goals-and-body)
 - [Recipes and Exercise](#recipes-and-exercise)
+- [Saved Templates](#saved-templates-1)
 - [Analytics](#analytics)
 - [Data and Integrity](#data-and-integrity)
 - [Lookup and Providers](#lookup-and-providers)
@@ -595,4 +638,4 @@ Artifacts are published with generated `checksums.txt`.
 Before tagging:
 - Confirm README command map matches current top-level commands.
 - Confirm docs examples still match `cmd/kcal/*.go` behavior.
-- Track notable changes in [`CHANGELOG.md`](https://github.com/saad/kcal-cli/blob/main/CHANGELOG.md).
+- Track notable changes in [`CHANGELOG.md`](https://github.com/saadjs/kcal-cli/blob/main/CHANGELOG.md).
