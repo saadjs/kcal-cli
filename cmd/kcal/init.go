@@ -3,8 +3,8 @@ package kcal
 import (
 	"fmt"
 
-	"github.com/saad/kcal-cli/internal/app"
-	"github.com/saad/kcal-cli/internal/db"
+	"github.com/saadjs/kcal-cli/internal/app"
+	"github.com/saadjs/kcal-cli/internal/db"
 	"github.com/spf13/cobra"
 )
 

@@ -3,7 +3,7 @@ package service_test
 import (
 	"testing"
 
-	"github.com/saad/kcal-cli/internal/service"
+	"github.com/saadjs/kcal-cli/internal/service"
 )
 
 func TestBodyGoalVersioning(t *testing.T) {

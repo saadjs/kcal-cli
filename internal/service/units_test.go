@@ -4,7 +4,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/saad/kcal-cli/internal/service"
+	"github.com/saadjs/kcal-cli/internal/service"
 )
 
 func TestConvertIngredientAmountSameDimension(t *testing.T) {

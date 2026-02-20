@@ -3,7 +3,7 @@ package kcal
 import (
 	"testing"
 
-	"github.com/saad/kcal-cli/internal/service"
+	"github.com/saadjs/kcal-cli/internal/service"
 )
 
 func TestResolveWeekRangeRejectsMalformedWeek(t *testing.T) {

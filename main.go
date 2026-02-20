@@ -1,6 +1,6 @@
 package main
 
-import "github.com/saad/kcal-cli/cmd/kcal"
+import "github.com/saadjs/kcal-cli/cmd/kcal"
 
 func main() {
 	kcal.Execute()

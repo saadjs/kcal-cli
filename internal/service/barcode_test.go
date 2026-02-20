@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/saad/kcal-cli/internal/db"
+	"github.com/saadjs/kcal-cli/internal/db"
 )
 
 type fakeBarcodeClient struct {

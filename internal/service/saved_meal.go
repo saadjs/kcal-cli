@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/saad/kcal-cli/internal/model"
+	"github.com/saadjs/kcal-cli/internal/model"
 )
 
 type CreateSavedMealInput struct {

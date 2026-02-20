@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/saad/kcal-cli/internal/service"
+	"github.com/saadjs/kcal-cli/internal/service"
 	"github.com/spf13/cobra"
 )
 

@@ -43,7 +43,7 @@ brew install kcal
 ```
 
 ```bash
-go install github.com/saad/kcal-cli@latest
+go install github.com/saadjs/kcal-cli@latest
 kcal --help
 ```
 
@@ -52,7 +52,7 @@ kcal --help
 Build from source:
 
 ```bash
-git clone https://github.com/saad/kcal-cli.git
+git clone https://github.com/saadjs/kcal-cli.git
 cd kcal-cli
 go build -o kcal .
 ./kcal --help
@@ -583,7 +583,7 @@ Local contributor workflow for testing, formatting, and docs maintenance.
 ### Most Common Commands
 
 ```bash
-git clone https://github.com/saad/kcal-cli.git
+git clone https://github.com/saadjs/kcal-cli.git
 cd kcal-cli
 go mod download
 go test ./...

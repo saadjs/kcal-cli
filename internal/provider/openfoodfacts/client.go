@@ -56,7 +56,7 @@ func (c *Client) LookupBarcode(ctx context.Context, barcode string) (FoodLookup,
 	if err != nil {
 		return FoodLookup{}, nil, fmt.Errorf("create openfoodfacts request: %w", err)
 	}
-	req.Header.Set("User-Agent", "kcal-cli/1.0 (+https://github.com/saad/kcal-cli)")
+	req.Header.Set("User-Agent", "kcal-cli/1.0 (+https://github.com/saadjs/kcal-cli)")
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
@@ -128,7 +128,7 @@ func (c *Client) SearchFoods(ctx context.Context, query string, limit int) ([]Fo
 	if err != nil {
 		return nil, nil, fmt.Errorf("create openfoodfacts search request: %w", err)
 	}
-	req.Header.Set("User-Agent", "kcal-cli/1.0 (+https://github.com/saad/kcal-cli)")
+	req.Header.Set("User-Agent", "kcal-cli/1.0 (+https://github.com/saadjs/kcal-cli)")
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, nil, fmt.Errorf("execute openfoodfacts search request: %w", err)

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/saad/kcal-cli/internal/service"
+	"github.com/saadjs/kcal-cli/internal/service"
 )
 
 func TestSavedFoodLifecycleAndLog(t *testing.T) {

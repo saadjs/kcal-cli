@@ -1,4 +1,4 @@
-module github.com/saad/kcal-cli
+module github.com/saadjs/kcal-cli
 
 go 1.25.0
 

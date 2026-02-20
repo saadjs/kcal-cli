@@ -14,7 +14,7 @@ brew install kcal
 ### Go install
 
 ```bash
-go install github.com/saad/kcal-cli@latest
+go install github.com/saadjs/kcal-cli@latest
 ```
 
 ### Build from source

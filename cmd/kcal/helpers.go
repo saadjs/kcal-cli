@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/saad/kcal-cli/internal/app"
-	"github.com/saad/kcal-cli/internal/db"
+	"github.com/saadjs/kcal-cli/internal/app"
+	"github.com/saadjs/kcal-cli/internal/db"
 )
 
 func withDB(run func(*sql.DB) error) error {

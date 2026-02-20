@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/saad/kcal-cli/internal/provider/openfoodfacts"
-	"github.com/saad/kcal-cli/internal/provider/upcitemdb"
-	"github.com/saad/kcal-cli/internal/provider/usda"
+	"github.com/saadjs/kcal-cli/internal/provider/openfoodfacts"
+	"github.com/saadjs/kcal-cli/internal/provider/upcitemdb"
+	"github.com/saadjs/kcal-cli/internal/provider/usda"
 )
 
 const defaultProviderSearchTTL = 7 * 24 * time.Hour

@@ -4,8 +4,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/saad/kcal-cli/internal/db"
-	"github.com/saad/kcal-cli/internal/service"
+	"github.com/saadjs/kcal-cli/internal/db"
+	"github.com/saadjs/kcal-cli/internal/service"
 )
 
 func TestExportImportSavedTemplates(t *testing.T) {
