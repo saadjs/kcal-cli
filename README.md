@@ -5,13 +5,18 @@
 ## Features
 
 - Meal entry CRUD for calories, macros, and richer nutrients (fiber, sugar, sodium, micronutrients)
+- Smart daily summary (`kcal today`) with remaining calories/macros against current goal
+- Faster entry capture with compact quick format (`kcal entry quick`)
+- Entry search and reuse (`kcal entry search`, `kcal entry repeat`)
 - Default + custom categories (`breakfast`, `lunch`, `dinner`, `snacks`, and custom like `supper`)
 - Goal versioning by effective date
+- Goal planning helper (`kcal goal suggest`) for maintain/cut/bulk presets
 - Body tracking (weight + optional body-fat) with body-goal versioning
 - Recipe CRUD with serving-based logging
 - Ingredient-level recipe builder with recipe total recalculation
 - Exercise log CRUD with burned calories and activity details
 - Weekly/monthly/custom-range analytics with intake/exercise/net calories and exercise-adjusted adherence targets
+- Data integrity commands (`kcal doctor`, backups, safe import modes with dry-run)
 
 ## Install
 
@@ -37,19 +42,36 @@ go build -o kcal .
 ./kcal recipe recalc "Overnight oats"
 ./kcal recipe log "Overnight oats" --servings 1 --category breakfast
 ./kcal exercise add --type running --calories 300 --duration-min 35 --date 2026-02-20 --time 18:30
+./kcal today
 ./kcal analytics week
+```
+
+Quick-entry and reuse examples:
+```bash
+./kcal entry quick "Greek Yogurt | 220 20 18 8 | breakfast" --date 2026-02-20 --time 08:00
+./kcal entry search --query yogurt
+./kcal entry repeat 12 --date 2026-02-21 --time 08:00
+```
+
+Goal suggestion example:
+```bash
+./kcal goal suggest --weight 80 --unit kg --maintenance-calories 2500 --pace cut --apply --effective-date 2026-02-20
 ```
 
 ## Command Reference
 
 - `kcal init`
+- `kcal today [--date YYYY-MM-DD]`
 - `kcal category add|list|rename|delete`
 - `kcal entry add|list|update|delete`
+  - `kcal entry quick "<name> | <kcal> <protein> <carbs> <fat> | <category>"`
+  - `kcal entry search --query <text> [--category ... --limit N]`
+  - `kcal entry repeat <id> [--date ... --time ... --category ...]`
   - `kcal entry show <id>`
   - `kcal entry metadata <id> --metadata-json '{...}'`
   - `entry add` supports `--metadata-json '{...}'`, `--fiber`, `--sugar`, `--sodium`, `--micros-json '{...}'`
   - `entry list` supports `--with-metadata` and `--with-nutrients`
-- `kcal goal set|current|history`
+- `kcal goal set|current|history|suggest`
 - `kcal body add|list|update|delete`
 - `kcal body-goal set|current|history`
 - `kcal exercise add|list|update|delete`
@@ -64,8 +86,10 @@ go build -o kcal .
 - `kcal lookup override set|show|list|delete ...`
 - `kcal lookup cache list|purge|refresh ...`
 - `kcal config set|get`
+- `kcal backup create|list|restore`
+- `kcal doctor [--fix]`
 - `kcal export --format json|csv --out <file>`
-- `kcal import --format json|csv --in <file>`
+- `kcal import --format json|csv --in <file> [--mode fail|skip|merge|replace] [--dry-run]`
 
 Use `--help` on any command for details.
 
