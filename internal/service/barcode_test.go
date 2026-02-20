@@ -143,6 +143,60 @@ func TestBarcodeOverrideLifecycle(t *testing.T) {
 	}
 }
 
+func TestLookupBarcodeWithFallbackUsesNextProvider(t *testing.T) {
+	sqldb := newServiceDB(t)
+	defer sqldb.Close()
+
+	const code = "3017620422003"
+	if err := SetBarcodeOverride(sqldb, BarcodeProviderOpenFoodFacts, code, BarcodeOverrideInput{
+		Description:   "Fallback Food",
+		Brand:         "Local",
+		ServingAmount: 15,
+		ServingUnit:   "g",
+		Calories:      100,
+		ProteinG:      1,
+		CarbsG:        10,
+		FatG:          6,
+	}); err != nil {
+		t.Fatalf("set override: %v", err)
+	}
+
+	got, err := LookupBarcodeWithFallback(sqldb, code, []BarcodeLookupCandidate{
+		{Provider: BarcodeProviderUSDA, Options: BarcodeLookupOptions{}},
+		{Provider: BarcodeProviderOpenFoodFacts, Options: BarcodeLookupOptions{}},
+	})
+	if err != nil {
+		t.Fatalf("lookup fallback: %v", err)
+	}
+	if got.Provider != BarcodeProviderOpenFoodFacts {
+		t.Fatalf("expected openfoodfacts result, got %q", got.Provider)
+	}
+	if !got.FromOverride {
+		t.Fatalf("expected override-backed result, got %+v", got)
+	}
+	if got.ProviderConfidence != 1.0 {
+		t.Fatalf("expected confidence 1.0 for override, got %.2f", got.ProviderConfidence)
+	}
+	if got.NutritionCompleteness != "complete" {
+		t.Fatalf("expected completeness complete, got %q", got.NutritionCompleteness)
+	}
+	if len(got.LookupTrail) != 2 || got.LookupTrail[0] != BarcodeProviderUSDA || got.LookupTrail[1] != BarcodeProviderOpenFoodFacts {
+		t.Fatalf("unexpected lookup trail: %+v", got.LookupTrail)
+	}
+}
+
+func TestDeriveNutritionCompleteness(t *testing.T) {
+	if got := deriveNutritionCompleteness(BarcodeLookupResult{}); got != "unknown" {
+		t.Fatalf("expected unknown completeness, got %q", got)
+	}
+	if got := deriveNutritionCompleteness(BarcodeLookupResult{Description: "Food"}); got != "partial" {
+		t.Fatalf("expected partial completeness, got %q", got)
+	}
+	if got := deriveNutritionCompleteness(BarcodeLookupResult{Description: "Food", ServingAmount: 10, ServingUnit: "g"}); got != "complete" {
+		t.Fatalf("expected complete completeness, got %q", got)
+	}
+}
+
 func newServiceDB(t *testing.T) *sql.DB {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "kcal.db")

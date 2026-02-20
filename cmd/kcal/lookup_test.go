@@ -90,6 +90,46 @@ func TestResolveUPCItemDBKeyType(t *testing.T) {
 	}
 }
 
+func TestParseProviderOrder(t *testing.T) {
+	got := parseProviderOrder("usda,off,upcitemdb,openfoodfacts,unknown,usda")
+	want := []string{"usda", "openfoodfacts", "upcitemdb"}
+	if len(got) != len(want) {
+		t.Fatalf("unexpected parsed length: got=%v want=%v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("unexpected provider at %d: got=%q want=%q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestResolveFallbackProvidersPrependsPrimaryProvider(t *testing.T) {
+	got := resolveFallbackProviders("openfoodfacts", "usda,upcitemdb")
+	want := []string{"openfoodfacts", "usda", "upcitemdb"}
+	if len(got) != len(want) {
+		t.Fatalf("unexpected providers: got=%v want=%v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("unexpected provider at %d: got=%q want=%q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestResolveFallbackProvidersUsesEnvOrder(t *testing.T) {
+	t.Setenv("KCAL_BARCODE_FALLBACK_ORDER", "upc,off")
+	got := resolveFallbackProviders("", "")
+	want := []string{"upcitemdb", "openfoodfacts"}
+	if len(got) != len(want) {
+		t.Fatalf("unexpected providers: got=%v want=%v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("unexpected provider at %d: got=%q want=%q", i, got[i], want[i])
+		}
+	}
+}
+
 func containsAll(s string, parts []string) bool {
 	for _, p := range parts {
 		if !strings.Contains(s, p) {

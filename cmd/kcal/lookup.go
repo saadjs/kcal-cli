@@ -26,23 +26,26 @@ const (
 	upcLimitTrial        = "Trial endpoint: up to 100 requests/day."
 	upcLimitDev          = "DEV plan: up to 20,000 lookup/day and 2,000 search/day."
 	upcLimitPro          = "PRO plan: up to 150,000 lookup/day and 20,000 search/day."
+	defaultFallbackOrder = "usda,openfoodfacts,upcitemdb"
 )
 
 var (
-	lookupProvider   string
-	lookupAPIKey     string
-	lookupAPIKeyType string
-	lookupJSON       bool
-	overrideName     string
-	overrideBrand    string
-	overrideAmount   float64
-	overrideUnit     string
-	overrideKcal     float64
-	overrideP        float64
-	overrideC        float64
-	overrideF        float64
-	overrideNotes    string
-	overrideLimit    int
+	lookupProvider      string
+	lookupAPIKey        string
+	lookupAPIKeyType    string
+	lookupFallback      bool
+	lookupFallbackOrder string
+	lookupJSON          bool
+	overrideName        string
+	overrideBrand       string
+	overrideAmount      float64
+	overrideUnit        string
+	overrideKcal        float64
+	overrideP           float64
+	overrideC           float64
+	overrideF           float64
+	overrideNotes       string
+	overrideLimit       int
 )
 
 var lookupBarcodeCmd = &cobra.Command{
@@ -50,17 +53,9 @@ var lookupBarcodeCmd = &cobra.Command{
 	Short: "Lookup food by barcode using configured provider",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		provider := resolveBarcodeProvider(lookupProvider)
-		apiKey, err := resolveProviderAPIKey(provider, lookupAPIKey)
-		if err != nil {
-			return err
-		}
 		barcode := strings.TrimSpace(args[0])
 		return withDB(func(sqldb *sql.DB) error {
-			result, err := service.LookupBarcode(sqldb, provider, barcode, service.BarcodeLookupOptions{
-				APIKey:     apiKey,
-				APIKeyType: resolveProviderAPIKeyType(provider, lookupAPIKeyType),
-			})
+			result, err := performBarcodeLookup(sqldb, barcode, lookupProvider, lookupAPIKey, lookupAPIKeyType, lookupFallback, lookupFallbackOrder)
 			if err != nil {
 				return err
 			}
@@ -84,6 +79,10 @@ var lookupBarcodeCmd = &cobra.Command{
 			fmt.Fprintf(cmd.OutOrStdout(), "Brand: %s\n", result.Brand)
 			fmt.Fprintf(cmd.OutOrStdout(), "Serving: %.2f %s\n", result.ServingAmount, result.ServingUnit)
 			fmt.Fprintf(cmd.OutOrStdout(), "Calories: %.1f\nProtein: %.1fg\nCarbs: %.1fg\nFat: %.1fg\n", result.Calories, result.ProteinG, result.CarbsG, result.FatG)
+			fmt.Fprintf(cmd.OutOrStdout(), "Confidence: %.2f (%s)\n", result.ProviderConfidence, result.NutritionCompleteness)
+			if len(result.LookupTrail) > 0 {
+				fmt.Fprintf(cmd.OutOrStdout(), "Lookup trail: %s\n", strings.Join(result.LookupTrail, " -> "))
+			}
 			return nil
 		})
 	},
@@ -343,6 +342,110 @@ func resolveProviderAPIKeyType(provider string, flagValue string) string {
 	return "3scale"
 }
 
+func performBarcodeLookup(sqldb *sql.DB, barcode, providerFlag, apiKeyFlag, apiKeyTypeFlag string, fallback bool, fallbackOrder string) (service.BarcodeLookupResult, error) {
+	if !fallback {
+		provider := resolveBarcodeProvider(providerFlag)
+		apiKey, err := resolveProviderAPIKey(provider, apiKeyFlag)
+		if err != nil {
+			return service.BarcodeLookupResult{}, err
+		}
+		return service.LookupBarcode(sqldb, provider, barcode, service.BarcodeLookupOptions{
+			APIKey:     apiKey,
+			APIKeyType: resolveProviderAPIKeyType(provider, apiKeyTypeFlag),
+		})
+	}
+
+	providers := resolveFallbackProviders(providerFlag, fallbackOrder)
+	candidates := make([]service.BarcodeLookupCandidate, 0, len(providers))
+	for _, p := range providers {
+		apiKey, err := resolveProviderAPIKey(p, apiKeyFlag)
+		if err != nil {
+			// In fallback mode, skip providers that require unavailable credentials.
+			continue
+		}
+		candidates = append(candidates, service.BarcodeLookupCandidate{
+			Provider: p,
+			Options: service.BarcodeLookupOptions{
+				APIKey:     apiKey,
+				APIKeyType: resolveProviderAPIKeyType(p, apiKeyTypeFlag),
+			},
+		})
+	}
+	if len(candidates) == 0 {
+		return service.BarcodeLookupResult{}, fmt.Errorf("no usable lookup providers configured; set provider API key or disable fallback")
+	}
+	return service.LookupBarcodeWithFallback(sqldb, barcode, candidates)
+}
+
+func resolveFallbackProviders(providerFlag, fallbackOrder string) []string {
+	order := strings.TrimSpace(fallbackOrder)
+	if order == "" {
+		order = strings.TrimSpace(os.Getenv("KCAL_BARCODE_FALLBACK_ORDER"))
+	}
+	if order == "" {
+		order = defaultFallbackOrder
+	}
+	parsed := parseProviderOrder(order)
+	if len(parsed) == 0 {
+		parsed = parseProviderOrder(defaultFallbackOrder)
+	}
+	primary := strings.TrimSpace(providerFlag)
+	if primary == "" {
+		primary = strings.TrimSpace(os.Getenv("KCAL_BARCODE_PROVIDER"))
+	}
+	primary = strings.ToLower(primary)
+	if primary == "" {
+		return parsed
+	}
+	return prependUniqueProvider(primary, parsed)
+}
+
+func parseProviderOrder(value string) []string {
+	parts := strings.Split(value, ",")
+	out := make([]string, 0, len(parts))
+	seen := map[string]bool{}
+	for _, p := range parts {
+		n := normalizeProviderToken(p)
+		if n == "" || seen[n] {
+			continue
+		}
+		seen[n] = true
+		out = append(out, n)
+	}
+	return out
+}
+
+func prependUniqueProvider(provider string, order []string) []string {
+	n := normalizeProviderToken(provider)
+	if n == "" {
+		return order
+	}
+	out := []string{n}
+	for _, p := range order {
+		if p != n {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func normalizeProviderToken(p string) string {
+	p = strings.ToLower(strings.TrimSpace(p))
+	switch p {
+	case "usda":
+		return service.BarcodeProviderUSDA
+	case "openfoodfacts", "off":
+		return service.BarcodeProviderOpenFoodFacts
+	case "upcitemdb", "upc":
+		return service.BarcodeProviderUPCItemDB
+	case "override", "cache":
+		// Overrides/cache are handled internally per provider lookup.
+		return ""
+	default:
+		return ""
+	}
+}
+
 var lookupOpenFoodFactsHelpCmd = &cobra.Command{
 	Use:   "openfoodfacts-help",
 	Short: "Show setup and usage guidance for Open Food Facts provider",
@@ -369,6 +472,8 @@ func init() {
 	lookupBarcodeCmd.Flags().StringVar(&lookupProvider, "provider", "", "Barcode provider: usda, openfoodfacts, or upcitemdb (or set KCAL_BARCODE_PROVIDER)")
 	lookupBarcodeCmd.Flags().StringVar(&lookupAPIKey, "api-key", "", "Provider API key (USDA/UPCitemdb)")
 	lookupBarcodeCmd.Flags().StringVar(&lookupAPIKeyType, "api-key-type", "", "Provider API key type (UPCitemdb, default: 3scale)")
+	lookupBarcodeCmd.Flags().BoolVar(&lookupFallback, "fallback", true, "Try providers in fallback order until one succeeds")
+	lookupBarcodeCmd.Flags().StringVar(&lookupFallbackOrder, "fallback-order", "", "Comma-separated provider order (default: usda,openfoodfacts,upcitemdb)")
 	lookupBarcodeCmd.Flags().BoolVar(&lookupJSON, "json", false, "Output as JSON")
 
 	for _, c := range []*cobra.Command{lookupOverrideSetCmd, lookupOverrideShowCmd, lookupOverrideListCmd, lookupOverrideDeleteCmd} {

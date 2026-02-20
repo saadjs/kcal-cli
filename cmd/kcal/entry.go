@@ -17,20 +17,22 @@ var entryCmd = &cobra.Command{
 }
 
 var (
-	entryName     string
-	entryCalories int
-	entryProtein  float64
-	entryCarbs    float64
-	entryFat      float64
-	entryCategory string
-	entryDate     string
-	entryTime     string
-	entryNotes    string
-	entryBarcode  string
-	entryProvider string
-	entryAPIKey   string
-	entryKeyType  string
-	entryServings float64
+	entryName          string
+	entryCalories      int
+	entryProtein       float64
+	entryCarbs         float64
+	entryFat           float64
+	entryCategory      string
+	entryDate          string
+	entryTime          string
+	entryNotes         string
+	entryBarcode       string
+	entryProvider      string
+	entryAPIKey        string
+	entryKeyType       string
+	entryFallback      bool
+	entryFallbackOrder string
+	entryServings      float64
 )
 
 var entryAddCmd = &cobra.Command{
@@ -169,6 +171,8 @@ func addEntryFields(cmd *cobra.Command, prefix string) {
 	cmd.Flags().StringVar(&entryProvider, "provider", "", "Barcode provider: usda, openfoodfacts, or upcitemdb")
 	cmd.Flags().StringVar(&entryAPIKey, "api-key", "", "Provider API key (USDA/UPCitemdb)")
 	cmd.Flags().StringVar(&entryKeyType, "api-key-type", "", "Provider API key type (UPCitemdb)")
+	cmd.Flags().BoolVar(&entryFallback, "fallback", true, "Try providers in fallback order when using --barcode")
+	cmd.Flags().StringVar(&entryFallbackOrder, "fallback-order", "", "Comma-separated fallback provider order")
 	cmd.Flags().Float64Var(&entryServings, "servings", 1, "Serving multiplier when logging by barcode")
 	_ = prefix
 }
@@ -205,15 +209,7 @@ func buildEntryAddInput(sqldb *sql.DB, consumed time.Time) (service.CreateEntryI
 		return service.CreateEntryInput{}, fmt.Errorf("--servings must be > 0")
 	}
 
-	provider := resolveBarcodeProvider(entryProvider)
-	apiKey, err := resolveProviderAPIKey(provider, entryAPIKey)
-	if err != nil {
-		return service.CreateEntryInput{}, err
-	}
-	result, err := service.LookupBarcode(sqldb, provider, entryBarcode, service.BarcodeLookupOptions{
-		APIKey:     apiKey,
-		APIKeyType: resolveProviderAPIKeyType(provider, entryKeyType),
-	})
+	result, err := performBarcodeLookup(sqldb, entryBarcode, entryProvider, entryAPIKey, entryKeyType, entryFallback, entryFallbackOrder)
 	if err != nil {
 		return service.CreateEntryInput{}, err
 	}

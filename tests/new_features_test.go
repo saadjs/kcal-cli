@@ -267,3 +267,43 @@ func TestEntryAddBarcodeRejectsManualNutritionFlags(t *testing.T) {
 		t.Fatalf("expected conflict validation error, got: %s", stderr)
 	}
 }
+
+func TestEntryAddWithBarcodeFallbackSkipsMissingUSDAKey(t *testing.T) {
+	binPath := buildKcalBinary(t)
+	dbPath := filepath.Join(t.TempDir(), "kcal.db")
+	initDB(t, binPath, dbPath)
+
+	_, stderr, exit := runKcal(t, binPath, dbPath, "lookup", "override", "set", "3017620422003",
+		"--provider", "openfoodfacts",
+		"--name", "Fallback Snack",
+		"--brand", "Test",
+		"--serving-amount", "20",
+		"--serving-unit", "g",
+		"--calories", "110",
+		"--protein", "2",
+		"--carbs", "12",
+		"--fat", "6",
+	)
+	if exit != 0 {
+		t.Fatalf("set override failed: exit=%d stderr=%s", exit, stderr)
+	}
+
+	_, stderr, exit = runKcal(t, binPath, dbPath, "entry", "add",
+		"--barcode", "3017620422003",
+		"--fallback-order", "usda,openfoodfacts",
+		"--category", "snacks",
+		"--date", "2026-02-20",
+		"--time", "12:00",
+	)
+	if exit != 0 {
+		t.Fatalf("entry add fallback failed: exit=%d stderr=%s", exit, stderr)
+	}
+
+	stdout, stderr, exit := runKcal(t, binPath, dbPath, "entry", "list", "--date", "2026-02-20")
+	if exit != 0 {
+		t.Fatalf("entry list failed: exit=%d stderr=%s", exit, stderr)
+	}
+	if !strings.Contains(stdout, "Fallback Snack") {
+		t.Fatalf("expected entry from fallback provider in list output, got: %s", stdout)
+	}
+}

@@ -22,19 +22,23 @@ const (
 )
 
 type BarcodeLookupResult struct {
-	Provider      string  `json:"provider"`
-	Barcode       string  `json:"barcode"`
-	Description   string  `json:"description"`
-	Brand         string  `json:"brand"`
-	ServingAmount float64 `json:"serving_amount"`
-	ServingUnit   string  `json:"serving_unit"`
-	Calories      float64 `json:"calories"`
-	ProteinG      float64 `json:"protein_g"`
-	CarbsG        float64 `json:"carbs_g"`
-	FatG          float64 `json:"fat_g"`
-	SourceID      int64   `json:"source_id"`
-	FromOverride  bool    `json:"from_override"`
-	FromCache     bool    `json:"from_cache"`
+	Provider              string   `json:"provider"`
+	Barcode               string   `json:"barcode"`
+	Description           string   `json:"description"`
+	Brand                 string   `json:"brand"`
+	ServingAmount         float64  `json:"serving_amount"`
+	ServingUnit           string   `json:"serving_unit"`
+	Calories              float64  `json:"calories"`
+	ProteinG              float64  `json:"protein_g"`
+	CarbsG                float64  `json:"carbs_g"`
+	FatG                  float64  `json:"fat_g"`
+	SourceID              int64    `json:"source_id"`
+	SourceTier            string   `json:"source_tier,omitempty"`
+	ProviderConfidence    float64  `json:"provider_confidence,omitempty"`
+	NutritionCompleteness string   `json:"nutrition_completeness,omitempty"`
+	LookupTrail           []string `json:"lookup_trail,omitempty"`
+	FromOverride          bool     `json:"from_override"`
+	FromCache             bool     `json:"from_cache"`
 }
 
 type BarcodeOverrideInput struct {
@@ -52,6 +56,11 @@ type BarcodeOverrideInput struct {
 type BarcodeLookupOptions struct {
 	APIKey     string
 	APIKeyType string
+}
+
+type BarcodeLookupCandidate struct {
+	Provider string
+	Options  BarcodeLookupOptions
 }
 
 type barcodeClient interface {
@@ -80,6 +89,34 @@ func LookupBarcode(db *sql.DB, provider, barcode string, options BarcodeLookupOp
 	}
 }
 
+func LookupBarcodeWithFallback(db *sql.DB, barcode string, candidates []BarcodeLookupCandidate) (BarcodeLookupResult, error) {
+	if len(candidates) == 0 {
+		return BarcodeLookupResult{}, fmt.Errorf("no lookup providers configured")
+	}
+	attempts := make([]string, 0, len(candidates))
+	errs := make([]string, 0, len(candidates))
+	for _, c := range candidates {
+		provider := normalizeBarcodeProvider(c.Provider)
+		if provider == "" {
+			continue
+		}
+		attempts = append(attempts, provider)
+		result, err := LookupBarcode(db, provider, barcode, c.Options)
+		if err == nil {
+			result.LookupTrail = attempts
+			if result.ProviderConfidence == 0 {
+				result.ProviderConfidence = providerBaseConfidence(provider)
+			}
+			if result.NutritionCompleteness == "" {
+				result.NutritionCompleteness = deriveNutritionCompleteness(result)
+			}
+			return result, nil
+		}
+		errs = append(errs, fmt.Sprintf("%s: %v", provider, err))
+	}
+	return BarcodeLookupResult{}, fmt.Errorf("lookup failed for %q across providers [%s]", barcode, strings.Join(errs, "; "))
+}
+
 func lookupBarcodeWithClient(db *sql.DB, provider string, client barcodeClient, barcode string) (BarcodeLookupResult, error) {
 	barcode = strings.TrimSpace(barcode)
 	if !isValidBarcode(barcode) {
@@ -91,6 +128,9 @@ func lookupBarcodeWithClient(db *sql.DB, provider string, client barcodeClient, 
 	}
 	if found {
 		overridden.FromOverride = true
+		overridden.SourceTier = "override"
+		overridden.ProviderConfidence = 1.0
+		overridden.NutritionCompleteness = deriveNutritionCompleteness(overridden)
 		return overridden, nil
 	}
 
@@ -100,6 +140,9 @@ func lookupBarcodeWithClient(db *sql.DB, provider string, client barcodeClient, 
 	}
 	if found {
 		cached.FromCache = true
+		cached.SourceTier = "cache"
+		cached.ProviderConfidence = providerBaseConfidence(provider)
+		cached.NutritionCompleteness = deriveNutritionCompleteness(cached)
 		return cached, nil
 	}
 
@@ -111,6 +154,9 @@ func lookupBarcodeWithClient(db *sql.DB, provider string, client barcodeClient, 
 	}
 	result.Provider = provider
 	result.Barcode = barcode
+	result.SourceTier = "provider"
+	result.ProviderConfidence = providerBaseConfidence(provider)
+	result.NutritionCompleteness = deriveNutritionCompleteness(result)
 	if err := upsertBarcodeCache(db, result, raw, time.Now().Add(defaultBarcodeTTL)); err != nil {
 		return BarcodeLookupResult{}, err
 	}
@@ -373,4 +419,27 @@ func normalizeBarcodeProvider(provider string) string {
 	default:
 		return p
 	}
+}
+
+func providerBaseConfidence(provider string) float64 {
+	switch normalizeBarcodeProvider(provider) {
+	case BarcodeProviderUSDA:
+		return 0.90
+	case BarcodeProviderOpenFoodFacts:
+		return 0.72
+	case BarcodeProviderUPCItemDB:
+		return 0.68
+	default:
+		return 0.50
+	}
+}
+
+func deriveNutritionCompleteness(r BarcodeLookupResult) string {
+	if strings.TrimSpace(r.Description) == "" {
+		return "unknown"
+	}
+	if r.ServingAmount > 0 && strings.TrimSpace(r.ServingUnit) != "" {
+		return "complete"
+	}
+	return "partial"
 }
