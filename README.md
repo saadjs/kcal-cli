@@ -87,8 +87,6 @@ For provider setup, limits, overrides, and cache workflows, see docs below.
 
 - GitHub Pages docs: <https://saadjs.github.io/kcal-cli/>
 - Local docs index: [`docs/index.md`](docs/index.md)
-- Commands reference: [`docs/reference/commands.md`](docs/reference/commands.md)
-- Barcode providers guide: [`docs/guides/barcode-providers.md`](docs/guides/barcode-providers.md)
 
 ## Development
 
