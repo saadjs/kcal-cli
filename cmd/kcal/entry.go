@@ -3,6 +3,9 @@ package kcal
 import (
 	"database/sql"
 	"fmt"
+	"math"
+	"strings"
+	"time"
 
 	"github.com/saad/kcal-cli/internal/service"
 	"github.com/spf13/cobra"
@@ -23,6 +26,11 @@ var (
 	entryDate     string
 	entryTime     string
 	entryNotes    string
+	entryBarcode  string
+	entryProvider string
+	entryAPIKey   string
+	entryKeyType  string
+	entryServings float64
 )
 
 var entryAddCmd = &cobra.Command{
@@ -33,18 +41,11 @@ var entryAddCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		in := service.CreateEntryInput{
-			Name:       entryName,
-			Calories:   entryCalories,
-			ProteinG:   entryProtein,
-			CarbsG:     entryCarbs,
-			FatG:       entryFat,
-			Category:   entryCategory,
-			Consumed:   consumed,
-			Notes:      entryNotes,
-			SourceType: "manual",
-		}
 		return withDB(func(sqldb *sql.DB) error {
+			in, err := buildEntryAddInput(sqldb, consumed)
+			if err != nil {
+				return err
+			}
 			id, err := service.CreateEntry(sqldb, in)
 			if err != nil {
 				return err
@@ -164,7 +165,76 @@ func addEntryFields(cmd *cobra.Command, prefix string) {
 	cmd.Flags().StringVar(&entryDate, "date", "", "Date in YYYY-MM-DD")
 	cmd.Flags().StringVar(&entryTime, "time", "", "Time in HH:MM")
 	cmd.Flags().StringVar(&entryNotes, "notes", "", "Optional notes")
+	cmd.Flags().StringVar(&entryBarcode, "barcode", "", "Barcode to lookup and log in one step")
+	cmd.Flags().StringVar(&entryProvider, "provider", "", "Barcode provider: usda, openfoodfacts, or upcitemdb")
+	cmd.Flags().StringVar(&entryAPIKey, "api-key", "", "Provider API key (USDA/UPCitemdb)")
+	cmd.Flags().StringVar(&entryKeyType, "api-key-type", "", "Provider API key type (UPCitemdb)")
+	cmd.Flags().Float64Var(&entryServings, "servings", 1, "Serving multiplier when logging by barcode")
 	_ = prefix
+}
+
+func buildEntryAddInput(sqldb *sql.DB, consumed time.Time) (service.CreateEntryInput, error) {
+	if strings.TrimSpace(entryCategory) == "" {
+		return service.CreateEntryInput{}, fmt.Errorf("--category is required")
+	}
+	if strings.TrimSpace(entryBarcode) == "" {
+		if strings.TrimSpace(entryName) == "" {
+			return service.CreateEntryInput{}, fmt.Errorf("--name is required when --barcode is not used")
+		}
+		return service.CreateEntryInput{
+			Name:       entryName,
+			Calories:   entryCalories,
+			ProteinG:   entryProtein,
+			CarbsG:     entryCarbs,
+			FatG:       entryFat,
+			Category:   entryCategory,
+			Consumed:   consumed,
+			Notes:      entryNotes,
+			SourceType: "manual",
+		}, nil
+	}
+
+	if strings.TrimSpace(entryName) != "" ||
+		entryCalories != 0 ||
+		entryProtein != 0 ||
+		entryCarbs != 0 ||
+		entryFat != 0 {
+		return service.CreateEntryInput{}, fmt.Errorf("cannot combine --barcode with manual nutrition flags (--name/--calories/--protein/--carbs/--fat)")
+	}
+	if entryServings <= 0 {
+		return service.CreateEntryInput{}, fmt.Errorf("--servings must be > 0")
+	}
+
+	provider := resolveBarcodeProvider(entryProvider)
+	apiKey, err := resolveProviderAPIKey(provider, entryAPIKey)
+	if err != nil {
+		return service.CreateEntryInput{}, err
+	}
+	result, err := service.LookupBarcode(sqldb, provider, entryBarcode, service.BarcodeLookupOptions{
+		APIKey:     apiKey,
+		APIKeyType: resolveProviderAPIKeyType(provider, entryKeyType),
+	})
+	if err != nil {
+		return service.CreateEntryInput{}, err
+	}
+
+	var sourceID *int64
+	if result.SourceID > 0 {
+		v := result.SourceID
+		sourceID = &v
+	}
+	return service.CreateEntryInput{
+		Name:       fmt.Sprintf("%s (barcode %s x%.2f)", result.Description, result.Barcode, entryServings),
+		Calories:   int(math.Round(result.Calories * entryServings)),
+		ProteinG:   result.ProteinG * entryServings,
+		CarbsG:     result.CarbsG * entryServings,
+		FatG:       result.FatG * entryServings,
+		Category:   entryCategory,
+		Consumed:   consumed,
+		Notes:      entryNotes,
+		SourceType: "barcode",
+		SourceID:   sourceID,
+	}, nil
 }
 
 func init() {
@@ -172,11 +242,6 @@ func init() {
 	entryCmd.AddCommand(entryAddCmd, entryListCmd, entryUpdateCmd, entryDeleteCmd)
 
 	addEntryFields(entryAddCmd, "add")
-	_ = entryAddCmd.MarkFlagRequired("name")
-	_ = entryAddCmd.MarkFlagRequired("calories")
-	_ = entryAddCmd.MarkFlagRequired("protein")
-	_ = entryAddCmd.MarkFlagRequired("carbs")
-	_ = entryAddCmd.MarkFlagRequired("fat")
 	_ = entryAddCmd.MarkFlagRequired("category")
 
 	entryListCmd.Flags().StringVar(&listDate, "date", "", "Filter by date YYYY-MM-DD")
