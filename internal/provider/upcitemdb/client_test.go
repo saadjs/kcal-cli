@@ -49,3 +49,40 @@ func TestLookupBarcodeParsesUPCItemDBResponse(t *testing.T) {
 		t.Fatalf("expected micronutrient vitamin_c, got %+v", item.Micronutrients)
 	}
 }
+
+func TestSearchFoodsParsesUPCItemDBResponse(t *testing.T) {
+	t.Parallel()
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+  "code": "OK",
+  "items": [
+    {
+      "title": "Greek Yogurt Strawberry",
+      "brand": "Test Brand",
+      "upc": "123456789012",
+      "size": "150 g",
+      "nutrition_facts": {
+        "Calories": "140",
+        "Protein": "12g",
+        "Total Carbohydrate": "15g",
+        "Total Fat": "3g"
+      }
+    }
+  ]
+}`))
+	}))
+	defer ts.Close()
+
+	c := &Client{BaseURL: ts.URL, HTTPClient: ts.Client()}
+	items, _, err := c.SearchFoods(context.Background(), "yogurt", 5)
+	if err != nil {
+		t.Fatalf("search foods: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(items))
+	}
+	if items[0].Description != "Greek Yogurt Strawberry" || items[0].SourceID != 123456789012 {
+		t.Fatalf("unexpected item: %+v", items[0])
+	}
+}

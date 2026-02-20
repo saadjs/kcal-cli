@@ -130,6 +130,31 @@ func TestResolveFallbackProvidersUsesEnvOrder(t *testing.T) {
 	}
 }
 
+func TestLookupSearchCommandFlags(t *testing.T) {
+	cmd, _, err := lookupCmd.Find([]string{"search"})
+	if err != nil {
+		t.Fatalf("find search command: %v", err)
+	}
+	if cmd == nil || cmd.Use != "search" {
+		t.Fatalf("expected lookup search command to be registered")
+	}
+	if f := cmd.Flags().Lookup("verified-min-score"); f == nil {
+		t.Fatalf("expected --verified-min-score flag")
+	}
+	if f := cmd.Flags().Lookup("query"); f == nil {
+		t.Fatalf("expected --query flag")
+	}
+}
+
+func TestLookupCacheSearchSubcommandsRegistered(t *testing.T) {
+	if cmd, _, err := lookupCmd.Find([]string{"cache", "search-list"}); err != nil || cmd == nil || cmd.Use != "search-list" {
+		t.Fatalf("expected lookup cache search-list command to be registered, err=%v", err)
+	}
+	if cmd, _, err := lookupCmd.Find([]string{"cache", "search-purge"}); err != nil || cmd == nil || cmd.Use != "search-purge" {
+		t.Fatalf("expected lookup cache search-purge command to be registered, err=%v", err)
+	}
+}
+
 func containsAll(s string, parts []string) bool {
 	for _, p := range parts {
 		if !strings.Contains(s, p) {

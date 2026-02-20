@@ -37,6 +37,10 @@ var (
 	lookupFallback      bool
 	lookupFallbackOrder string
 	lookupJSON          bool
+	lookupQuery         string
+	lookupSearchLimit   int
+	lookupVerifiedOnly  bool
+	lookupVerifiedMin   float64
 	overrideName        string
 	overrideBrand       string
 	overrideAmount      float64
@@ -54,6 +58,8 @@ var (
 	cacheLimit          int
 	cacheBarcode        string
 	cachePurgeAll       bool
+	cacheSearchQuery    string
+	cacheSearchPurgeAll bool
 )
 
 var lookupBarcodeCmd = &cobra.Command{
@@ -96,6 +102,45 @@ var lookupBarcodeCmd = &cobra.Command{
 	},
 }
 
+var lookupSearchCmd = &cobra.Command{
+	Use:   "search",
+	Short: "Search food text across providers",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return withDB(func(sqldb *sql.DB) error {
+			results, err := performFoodSearch(sqldb, lookupQuery, lookupProvider, lookupAPIKey, lookupAPIKeyType, lookupFallback, lookupFallbackOrder, lookupSearchLimit, lookupVerifiedOnly, lookupVerifiedMin)
+			if err != nil {
+				return err
+			}
+			if lookupJSON {
+				b, err := json.MarshalIndent(results, "", "  ")
+				if err != nil {
+					return fmt.Errorf("marshal search lookup json: %w", err)
+				}
+				fmt.Fprintln(cmd.OutOrStdout(), string(b))
+				return nil
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "RANK\tSCORE\tVERIFIED\tPROVIDER\tFOOD\tBRAND\tKCAL\tSERVING\tCOMPLETENESS")
+			for i, r := range results {
+				fmt.Fprintf(
+					cmd.OutOrStdout(),
+					"%d\t%.2f\t%t\t%s\t%s\t%s\t%.1f\t%.2f %s\t%s\n",
+					i+1,
+					r.ConfidenceScore,
+					r.IsVerified,
+					r.Provider,
+					r.Description,
+					r.Brand,
+					r.Calories,
+					r.ServingAmount,
+					r.ServingUnit,
+					r.NutritionCompleteness,
+				)
+			}
+			return nil
+		})
+	},
+}
+
 var lookupOverrideCmd = &cobra.Command{
 	Use:   "override",
 	Short: "Manage local barcode nutrition overrides",
@@ -104,6 +149,47 @@ var lookupOverrideCmd = &cobra.Command{
 var lookupCacheCmd = &cobra.Command{
 	Use:   "cache",
 	Short: "Manage barcode lookup cache",
+}
+
+var lookupCacheSearchListCmd = &cobra.Command{
+	Use:   "search-list",
+	Short: "List provider text-search cache rows",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return withDB(func(sqldb *sql.DB) error {
+			items, err := service.ListProviderSearchCache(sqldb, lookupProvider, cacheSearchQuery, cacheLimit)
+			if err != nil {
+				return err
+			}
+			if lookupJSON {
+				b, err := json.MarshalIndent(items, "", "  ")
+				if err != nil {
+					return fmt.Errorf("marshal search cache list json: %w", err)
+				}
+				fmt.Fprintln(cmd.OutOrStdout(), string(b))
+				return nil
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "PROVIDER\tQUERY\tLIMIT\tFETCHED_AT\tEXPIRES_AT")
+			for _, it := range items {
+				fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\t%d\t%s\t%s\n", it.Provider, it.Query, it.LimitRequested, it.FetchedAt.Format(time.RFC3339), it.ExpiresAt.Format(time.RFC3339))
+			}
+			return nil
+		})
+	},
+}
+
+var lookupCacheSearchPurgeCmd = &cobra.Command{
+	Use:   "search-purge",
+	Short: "Purge provider text-search cache rows",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return withDB(func(sqldb *sql.DB) error {
+			count, err := service.PurgeProviderSearchCache(sqldb, lookupProvider, cacheSearchQuery, cacheSearchPurgeAll)
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Purged %d search cache row(s)\n", count)
+			return nil
+		})
+	},
 }
 
 var lookupCacheListCmd = &cobra.Command{
@@ -342,6 +428,7 @@ Useful commands:
 - kcal lookup openfoodfacts-help
 - kcal lookup upcitemdb-help
 - kcal lookup barcode <code> --provider usda|openfoodfacts|upcitemdb
+- kcal lookup search --query "<text>" --fallback --limit 10
 - kcal lookup override set|show|list|delete ...`
 }
 
@@ -472,6 +559,58 @@ func performBarcodeLookup(sqldb *sql.DB, barcode, providerFlag, apiKeyFlag, apiK
 	return service.LookupBarcodeWithFallback(sqldb, barcode, candidates)
 }
 
+func performFoodSearch(sqldb *sql.DB, query, providerFlag, apiKeyFlag, apiKeyTypeFlag string, fallback bool, fallbackOrder string, limit int, verifiedOnly bool, verifiedMin float64) ([]service.FoodSearchResult, error) {
+	providerFlag = strings.TrimSpace(providerFlag)
+	if providerFlag == "" && strings.TrimSpace(os.Getenv("KCAL_BARCODE_PROVIDER")) == "" {
+		if v := lookupConfigValue(sqldb, service.ConfigBarcodeProvider); v != "" {
+			providerFlag = v
+		}
+	}
+	fallbackOrder = strings.TrimSpace(fallbackOrder)
+	if fallbackOrder == "" && strings.TrimSpace(os.Getenv("KCAL_BARCODE_FALLBACK_ORDER")) == "" {
+		if v := lookupConfigValue(sqldb, service.ConfigBarcodeFallbackOrder); v != "" {
+			fallbackOrder = v
+		}
+	}
+	opts := service.FoodSearchOptions{
+		Provider:         providerFlag,
+		Limit:            limit,
+		VerifiedOnly:     verifiedOnly,
+		VerifiedMinScore: verifiedMin,
+	}
+	if !fallback {
+		provider := resolveBarcodeProvider(providerFlag)
+		apiKey, err := resolveProviderAPIKey(provider, apiKeyFlag)
+		if err != nil {
+			return nil, err
+		}
+		opts.Provider = provider
+		opts.APIKey = apiKey
+		opts.APIKeyType = resolveProviderAPIKeyType(provider, apiKeyTypeFlag)
+		return service.SearchFoods(sqldb, query, opts)
+	}
+
+	providers := resolveFallbackProviders(providerFlag, fallbackOrder)
+	candidates := make([]service.FoodSearchCandidate, 0, len(providers))
+	for _, p := range providers {
+		apiKey, err := resolveProviderAPIKey(p, apiKeyFlag)
+		if err != nil {
+			continue
+		}
+		candidates = append(candidates, service.FoodSearchCandidate{
+			Provider: p,
+			Options: service.BarcodeLookupOptions{
+				APIKey:     apiKey,
+				APIKeyType: resolveProviderAPIKeyType(p, apiKeyTypeFlag),
+			},
+		})
+	}
+	if len(candidates) == 0 {
+		return nil, fmt.Errorf("no usable search providers configured; set provider API key or disable fallback")
+	}
+	return service.SearchFoodsWithFallback(sqldb, query, candidates, opts)
+}
+
 func lookupConfigValue(sqldb *sql.DB, key string) string {
 	if sqldb == nil {
 		return ""
@@ -583,9 +722,9 @@ var lookupUPCItemDBHelpCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(lookupCmd)
-	lookupCmd.AddCommand(lookupBarcodeCmd, lookupProvidersCmd, lookupUSDAHelpCmd, lookupOpenFoodFactsHelpCmd, lookupUPCItemDBHelpCmd, lookupOverrideCmd, lookupCacheCmd)
+	lookupCmd.AddCommand(lookupBarcodeCmd, lookupSearchCmd, lookupProvidersCmd, lookupUSDAHelpCmd, lookupOpenFoodFactsHelpCmd, lookupUPCItemDBHelpCmd, lookupOverrideCmd, lookupCacheCmd)
 	lookupOverrideCmd.AddCommand(lookupOverrideSetCmd, lookupOverrideShowCmd, lookupOverrideListCmd, lookupOverrideDeleteCmd)
-	lookupCacheCmd.AddCommand(lookupCacheListCmd, lookupCachePurgeCmd, lookupCacheRefreshCmd)
+	lookupCacheCmd.AddCommand(lookupCacheListCmd, lookupCachePurgeCmd, lookupCacheRefreshCmd, lookupCacheSearchListCmd, lookupCacheSearchPurgeCmd)
 
 	lookupBarcodeCmd.Flags().StringVar(&lookupProvider, "provider", "", "Barcode provider: usda, openfoodfacts, or upcitemdb (or set KCAL_BARCODE_PROVIDER)")
 	lookupBarcodeCmd.Flags().StringVar(&lookupAPIKey, "api-key", "", "Provider API key (USDA/UPCitemdb)")
@@ -593,6 +732,17 @@ func init() {
 	lookupBarcodeCmd.Flags().BoolVar(&lookupFallback, "fallback", true, "Try providers in fallback order until one succeeds")
 	lookupBarcodeCmd.Flags().StringVar(&lookupFallbackOrder, "fallback-order", "", "Comma-separated provider order (default: usda,openfoodfacts,upcitemdb)")
 	lookupBarcodeCmd.Flags().BoolVar(&lookupJSON, "json", false, "Output as JSON")
+	lookupSearchCmd.Flags().StringVar(&lookupQuery, "query", "", "Text query")
+	lookupSearchCmd.Flags().StringVar(&lookupProvider, "provider", "", "Provider: usda, openfoodfacts, or upcitemdb")
+	lookupSearchCmd.Flags().StringVar(&lookupAPIKey, "api-key", "", "Provider API key (USDA/UPCitemdb)")
+	lookupSearchCmd.Flags().StringVar(&lookupAPIKeyType, "api-key-type", "", "Provider API key type (UPCitemdb, default: 3scale)")
+	lookupSearchCmd.Flags().BoolVar(&lookupFallback, "fallback", true, "Aggregate results across fallback provider order")
+	lookupSearchCmd.Flags().StringVar(&lookupFallbackOrder, "fallback-order", "", "Comma-separated provider order (default: usda,openfoodfacts,upcitemdb)")
+	lookupSearchCmd.Flags().IntVar(&lookupSearchLimit, "limit", 10, "Maximum results")
+	lookupSearchCmd.Flags().BoolVar(&lookupVerifiedOnly, "verified-only", false, "Return only verified foods")
+	lookupSearchCmd.Flags().Float64Var(&lookupVerifiedMin, "verified-min-score", service.DefaultVerifiedMinScore, "Minimum confidence score to mark as verified")
+	lookupSearchCmd.Flags().BoolVar(&lookupJSON, "json", false, "Output as JSON")
+	_ = lookupSearchCmd.MarkFlagRequired("query")
 
 	for _, c := range []*cobra.Command{lookupOverrideSetCmd, lookupOverrideShowCmd, lookupOverrideListCmd, lookupOverrideDeleteCmd} {
 		c.Flags().StringVar(&lookupProvider, "provider", "", "Barcode provider: usda, openfoodfacts, or upcitemdb (default from KCAL_BARCODE_PROVIDER/usda)")
@@ -628,4 +778,11 @@ func init() {
 	lookupCacheRefreshCmd.Flags().StringVar(&lookupProvider, "provider", "", "Provider for refresh")
 	lookupCacheRefreshCmd.Flags().StringVar(&lookupAPIKey, "api-key", "", "Provider API key (USDA/UPCitemdb)")
 	lookupCacheRefreshCmd.Flags().StringVar(&lookupAPIKeyType, "api-key-type", "", "Provider API key type (UPCitemdb)")
+	lookupCacheSearchListCmd.Flags().StringVar(&lookupProvider, "provider", "", "Filter by provider")
+	lookupCacheSearchListCmd.Flags().StringVar(&cacheSearchQuery, "query", "", "Filter by normalized query")
+	lookupCacheSearchListCmd.Flags().IntVar(&cacheLimit, "limit", 100, "Max search cache rows to return")
+	lookupCacheSearchListCmd.Flags().BoolVar(&lookupJSON, "json", false, "Output as JSON")
+	lookupCacheSearchPurgeCmd.Flags().StringVar(&lookupProvider, "provider", "", "Purge search cache rows for provider")
+	lookupCacheSearchPurgeCmd.Flags().StringVar(&cacheSearchQuery, "query", "", "Purge search cache rows for query")
+	lookupCacheSearchPurgeCmd.Flags().BoolVar(&cacheSearchPurgeAll, "all", false, "Purge all search cache rows")
 }

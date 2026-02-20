@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -104,6 +105,81 @@ func (c *Client) LookupBarcode(ctx context.Context, barcode string) (FoodLookup,
 		Micronutrients: micros,
 		SourceID:       0,
 	}, body, nil
+}
+
+func (c *Client) SearchFoods(ctx context.Context, query string, limit int) ([]FoodLookup, []byte, error) {
+	base := strings.TrimRight(strings.TrimSpace(c.BaseURL), "/")
+	if base == "" {
+		base = defaultBaseURL
+	}
+	httpClient := c.HTTPClient
+	if httpClient == nil {
+		httpClient = &http.Client{Timeout: 12 * time.Second}
+	}
+	if limit <= 0 {
+		limit = 10
+	}
+	u := fmt.Sprintf("%s/cgi/search.pl?search_terms=%s&search_simple=1&action=process&json=1&page_size=%d",
+		base,
+		url.QueryEscape(strings.TrimSpace(query)),
+		limit,
+	)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, nil, fmt.Errorf("create openfoodfacts search request: %w", err)
+	}
+	req.Header.Set("User-Agent", "kcal-cli/1.0 (+https://github.com/saad/kcal-cli)")
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, nil, fmt.Errorf("execute openfoodfacts search request: %w", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, nil, fmt.Errorf("read openfoodfacts search response: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, body, fmt.Errorf("openfoodfacts search request failed with status %d", resp.StatusCode)
+	}
+	var parsed offSearchResponse
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return nil, body, fmt.Errorf("decode openfoodfacts search response: %w", err)
+	}
+	if len(parsed.Products) == 0 {
+		return nil, body, fmt.Errorf("no openfoodfacts product found for query %q", query)
+	}
+	out := make([]FoodLookup, 0, len(parsed.Products))
+	for _, p := range parsed.Products {
+		if strings.TrimSpace(p.ProductName) == "" {
+			continue
+		}
+		servingAmount, servingUnit := parseServing(p)
+		sourceID := int64(0)
+		if id, err := strconv.ParseInt(strings.TrimSpace(p.ID), 10, 64); err == nil {
+			sourceID = id
+		} else if id, err := strconv.ParseInt(strings.TrimSpace(p.Code), 10, 64); err == nil {
+			sourceID = id
+		}
+		out = append(out, FoodLookup{
+			Description:    strings.TrimSpace(p.ProductName),
+			Brand:          strings.TrimSpace(p.Brands),
+			ServingAmount:  servingAmount,
+			ServingUnit:    servingUnit,
+			Calories:       nutrientValue(p.Nutriments, "energy-kcal"),
+			ProteinG:       nutrientValue(p.Nutriments, "proteins"),
+			CarbsG:         nutrientValue(p.Nutriments, "carbohydrates"),
+			FatG:           nutrientValue(p.Nutriments, "fat"),
+			FiberG:         nutrientValue(p.Nutriments, "fiber"),
+			SugarG:         nutrientValue(p.Nutriments, "sugars"),
+			SodiumMg:       nutrientValue(p.Nutriments, "sodium") * 1000,
+			Micronutrients: parseMicronutrients(p.Nutriments),
+			SourceID:       sourceID,
+		})
+	}
+	if len(out) == 0 {
+		return nil, body, fmt.Errorf("no openfoodfacts product found for query %q", query)
+	}
+	return out, body, nil
 }
 
 func nutrientValue(n map[string]any, base string) float64 {
@@ -205,10 +281,16 @@ type offResponse struct {
 }
 
 type offProduct struct {
+	ID                  string         `json:"_id"`
+	Code                string         `json:"code"`
 	ProductName         string         `json:"product_name"`
 	Brands              string         `json:"brands"`
 	ServingSize         string         `json:"serving_size"`
 	ServingQuantity     float64        `json:"serving_quantity"`
 	ServingQuantityUnit string         `json:"serving_quantity_unit"`
 	Nutriments          map[string]any `json:"nutriments"`
+}
+
+type offSearchResponse struct {
+	Products []offProduct `json:"products"`
 }

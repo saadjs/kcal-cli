@@ -38,6 +38,10 @@ type BarcodeLookupResult struct {
 	Micronutrients        Micronutrients `json:"micronutrients,omitempty"`
 	SourceID              int64          `json:"source_id"`
 	SourceTier            string         `json:"source_tier,omitempty"`
+	ExactMatch            bool           `json:"exact_match,omitempty"`
+	ConfidenceScore       float64        `json:"confidence_score,omitempty"`
+	IsVerified            bool           `json:"is_verified,omitempty"`
+	VerificationReasons   []string       `json:"verification_reasons,omitempty"`
 	ProviderConfidence    float64        `json:"provider_confidence,omitempty"`
 	NutritionCompleteness string         `json:"nutrition_completeness,omitempty"`
 	LookupTrail           []string       `json:"lookup_trail,omitempty"`
@@ -138,8 +142,8 @@ func RefreshBarcodeCache(db *sql.DB, provider, barcode string, options BarcodeLo
 	result.Provider = provider
 	result.Barcode = barcode
 	result.SourceTier = "provider"
-	result.ProviderConfidence = providerBaseConfidence(provider)
 	result.NutritionCompleteness = deriveNutritionCompleteness(result)
+	applyBarcodeConfidence(&result, DefaultVerifiedMinScore)
 	if err := upsertBarcodeCache(db, result, raw, time.Now().Add(defaultBarcodeTTL)); err != nil {
 		return BarcodeLookupResult{}, err
 	}
@@ -225,11 +229,11 @@ func LookupBarcodeWithFallback(db *sql.DB, barcode string, candidates []BarcodeL
 		result, err := LookupBarcode(db, provider, barcode, c.Options)
 		if err == nil {
 			result.LookupTrail = attempts
-			if result.ProviderConfidence == 0 {
-				result.ProviderConfidence = providerBaseConfidence(provider)
-			}
 			if result.NutritionCompleteness == "" {
 				result.NutritionCompleteness = deriveNutritionCompleteness(result)
+			}
+			if result.ConfidenceScore == 0 {
+				applyBarcodeConfidence(&result, DefaultVerifiedMinScore)
 			}
 			return result, nil
 		}
@@ -250,8 +254,9 @@ func lookupBarcodeWithClient(db *sql.DB, provider string, client barcodeClient, 
 	if found {
 		overridden.FromOverride = true
 		overridden.SourceTier = "override"
-		overridden.ProviderConfidence = 1.0
+		overridden.ExactMatch = true
 		overridden.NutritionCompleteness = deriveNutritionCompleteness(overridden)
+		applyBarcodeConfidence(&overridden, DefaultVerifiedMinScore)
 		return overridden, nil
 	}
 
@@ -262,8 +267,9 @@ func lookupBarcodeWithClient(db *sql.DB, provider string, client barcodeClient, 
 	if found {
 		cached.FromCache = true
 		cached.SourceTier = "cache"
-		cached.ProviderConfidence = providerBaseConfidence(provider)
+		cached.ExactMatch = provider != BarcodeProviderUSDA
 		cached.NutritionCompleteness = deriveNutritionCompleteness(cached)
+		applyBarcodeConfidence(&cached, DefaultVerifiedMinScore)
 		return cached, nil
 	}
 
@@ -276,8 +282,11 @@ func lookupBarcodeWithClient(db *sql.DB, provider string, client barcodeClient, 
 	result.Provider = provider
 	result.Barcode = barcode
 	result.SourceTier = "provider"
-	result.ProviderConfidence = providerBaseConfidence(provider)
+	if provider != BarcodeProviderUSDA {
+		result.ExactMatch = true
+	}
 	result.NutritionCompleteness = deriveNutritionCompleteness(result)
+	applyBarcodeConfidence(&result, DefaultVerifiedMinScore)
 	if err := upsertBarcodeCache(db, result, raw, time.Now().Add(defaultBarcodeTTL)); err != nil {
 		return BarcodeLookupResult{}, err
 	}
@@ -307,7 +316,34 @@ func (a *usdaClientAdapter) LookupBarcode(ctx context.Context, barcode string) (
 		SodiumMg:       food.SodiumMg,
 		Micronutrients: convertUSDAMicros(food.Micronutrients),
 		SourceID:       food.FDCID,
+		ExactMatch:     food.ExactBarcodeMatch,
 	}, raw, nil
+}
+
+func (a *usdaClientAdapter) SearchFoods(ctx context.Context, query string, limit int) ([]BarcodeLookupResult, []byte, error) {
+	foods, raw, err := a.client.SearchFoods(ctx, query, limit)
+	if err != nil {
+		return nil, nil, err
+	}
+	out := make([]BarcodeLookupResult, 0, len(foods))
+	for _, food := range foods {
+		out = append(out, BarcodeLookupResult{
+			Description:    food.Description,
+			Brand:          food.Brand,
+			ServingAmount:  food.ServingAmount,
+			ServingUnit:    food.ServingUnit,
+			Calories:       food.Calories,
+			ProteinG:       food.ProteinG,
+			CarbsG:         food.CarbsG,
+			FatG:           food.FatG,
+			FiberG:         food.FiberG,
+			SugarG:         food.SugarG,
+			SodiumMg:       food.SodiumMg,
+			Micronutrients: convertUSDAMicros(food.Micronutrients),
+			SourceID:       food.FDCID,
+		})
+	}
+	return out, raw, nil
 }
 
 type openFoodFactsClientAdapter struct {
@@ -333,7 +369,34 @@ func (a *openFoodFactsClientAdapter) LookupBarcode(ctx context.Context, barcode 
 		SodiumMg:       food.SodiumMg,
 		Micronutrients: convertOpenFoodFactsMicros(food.Micronutrients),
 		SourceID:       food.SourceID,
+		ExactMatch:     true,
 	}, raw, nil
+}
+
+func (a *openFoodFactsClientAdapter) SearchFoods(ctx context.Context, query string, limit int) ([]BarcodeLookupResult, []byte, error) {
+	foods, raw, err := a.client.SearchFoods(ctx, query, limit)
+	if err != nil {
+		return nil, nil, err
+	}
+	out := make([]BarcodeLookupResult, 0, len(foods))
+	for _, food := range foods {
+		out = append(out, BarcodeLookupResult{
+			Description:    food.Description,
+			Brand:          food.Brand,
+			ServingAmount:  food.ServingAmount,
+			ServingUnit:    food.ServingUnit,
+			Calories:       food.Calories,
+			ProteinG:       food.ProteinG,
+			CarbsG:         food.CarbsG,
+			FatG:           food.FatG,
+			FiberG:         food.FiberG,
+			SugarG:         food.SugarG,
+			SodiumMg:       food.SodiumMg,
+			Micronutrients: convertOpenFoodFactsMicros(food.Micronutrients),
+			SourceID:       food.SourceID,
+		})
+	}
+	return out, raw, nil
 }
 
 type upcItemDBClientAdapter struct {
@@ -359,7 +422,34 @@ func (a *upcItemDBClientAdapter) LookupBarcode(ctx context.Context, barcode stri
 		SodiumMg:       food.SodiumMg,
 		Micronutrients: convertUPCItemDBMicros(food.Micronutrients),
 		SourceID:       food.SourceID,
+		ExactMatch:     true,
 	}, raw, nil
+}
+
+func (a *upcItemDBClientAdapter) SearchFoods(ctx context.Context, query string, limit int) ([]BarcodeLookupResult, []byte, error) {
+	foods, raw, err := a.client.SearchFoods(ctx, query, limit)
+	if err != nil {
+		return nil, nil, err
+	}
+	out := make([]BarcodeLookupResult, 0, len(foods))
+	for _, food := range foods {
+		out = append(out, BarcodeLookupResult{
+			Description:    food.Description,
+			Brand:          food.Brand,
+			ServingAmount:  food.ServingAmount,
+			ServingUnit:    food.ServingUnit,
+			Calories:       food.Calories,
+			ProteinG:       food.ProteinG,
+			CarbsG:         food.CarbsG,
+			FatG:           food.FatG,
+			FiberG:         food.FiberG,
+			SugarG:         food.SugarG,
+			SodiumMg:       food.SodiumMg,
+			Micronutrients: convertUPCItemDBMicros(food.Micronutrients),
+			SourceID:       food.SourceID,
+		})
+	}
+	return out, raw, nil
 }
 
 func isValidBarcode(code string) bool {
@@ -634,4 +724,15 @@ func convertUPCItemDBMicros(in upcitemdb.Micronutrients) Micronutrients {
 		out[k] = MicronutrientAmount{Value: v.Value, Unit: v.Unit}
 	}
 	return out
+}
+
+func applyBarcodeConfidence(result *BarcodeLookupResult, minScore float64) {
+	if result == nil {
+		return
+	}
+	confidence := ScoreBarcodeConfidence(*result, minScore)
+	result.ConfidenceScore = confidence.Score
+	result.ProviderConfidence = confidence.Score
+	result.IsVerified = confidence.IsVerified
+	result.VerificationReasons = confidence.Reasons
 }

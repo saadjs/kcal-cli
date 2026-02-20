@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -122,6 +123,91 @@ func (c *Client) LookupBarcode(ctx context.Context, barcode string) (FoodLookup,
 	}, body, nil
 }
 
+func (c *Client) SearchFoods(ctx context.Context, query string, limit int) ([]FoodLookup, []byte, error) {
+	base := strings.TrimRight(strings.TrimSpace(c.BaseURL), "/")
+	if base == "" {
+		base = defaultBaseURL
+	}
+	httpClient := c.HTTPClient
+	if httpClient == nil {
+		httpClient = &http.Client{Timeout: 12 * time.Second}
+	}
+	if limit <= 0 {
+		limit = 10
+	}
+	path := "/prod/trial/search"
+	if strings.TrimSpace(c.APIKey) != "" {
+		path = "/prod/v1/search"
+	}
+	u := fmt.Sprintf("%s%s?s=%s", base, path, url.QueryEscape(strings.TrimSpace(query)))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, nil, fmt.Errorf("create upcitemdb search request: %w", err)
+	}
+	if strings.TrimSpace(c.APIKey) != "" {
+		keyType := strings.TrimSpace(c.APIKeyType)
+		if keyType == "" {
+			keyType = "3scale"
+		}
+		req.Header.Set("key_type", keyType)
+		req.Header.Set("user_key", strings.TrimSpace(c.APIKey))
+	}
+	req.Header.Set("Accept", "application/json")
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, nil, fmt.Errorf("execute upcitemdb search request: %w", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, nil, fmt.Errorf("read upcitemdb search response: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, body, fmt.Errorf("upcitemdb search request failed with status %d", resp.StatusCode)
+	}
+	var parsed response
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return nil, body, fmt.Errorf("decode upcitemdb search response: %w", err)
+	}
+	if strings.ToUpper(parsed.Code) != "OK" || len(parsed.Items) == 0 {
+		return nil, body, fmt.Errorf("no upcitemdb product found for query %q", query)
+	}
+	out := make([]FoodLookup, 0, len(parsed.Items))
+	for _, item := range parsed.Items {
+		amount, unit := parseServing(item.Size)
+		calories, _ := parseNutrient(item.NutritionFacts, "calories")
+		protein, _ := parseNutrient(item.NutritionFacts, "protein")
+		carbs, _ := parseNutrient(item.NutritionFacts, "carbohydrate")
+		fat, _ := parseNutrient(item.NutritionFacts, "fat")
+		fiber, _ := parseNutrient(item.NutritionFacts, "fiber")
+		sugar, _ := parseNutrient(item.NutritionFacts, "sugar")
+		sodium, sodiumUnit := parseNutrient(item.NutritionFacts, "sodium")
+		if strings.ToLower(sodiumUnit) == "g" {
+			sodium *= 1000
+		}
+		sourceID := int64(0)
+		if id, err := strconv.ParseInt(strings.TrimSpace(item.UPC), 10, 64); err == nil {
+			sourceID = id
+		}
+		out = append(out, FoodLookup{
+			Description:    strings.TrimSpace(item.Title),
+			Brand:          strings.TrimSpace(item.Brand),
+			ServingAmount:  amount,
+			ServingUnit:    unit,
+			Calories:       calories,
+			ProteinG:       protein,
+			CarbsG:         carbs,
+			FatG:           fat,
+			FiberG:         fiber,
+			SugarG:         sugar,
+			SodiumMg:       sodium,
+			Micronutrients: parseMicronutrients(item.NutritionFacts),
+			SourceID:       sourceID,
+		})
+	}
+	return out, body, nil
+}
+
 func parseServing(size string) (float64, string) {
 	size = strings.TrimSpace(size)
 	if size == "" {
@@ -206,6 +292,7 @@ type response struct {
 type item struct {
 	Title          string         `json:"title"`
 	Brand          string         `json:"brand"`
+	UPC            string         `json:"upc"`
 	Size           string         `json:"size"`
 	NutritionFacts map[string]any `json:"nutrition_facts"`
 }

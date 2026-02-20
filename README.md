@@ -79,6 +79,7 @@ kcal lookup search --query "greek yogurt" --fallback --limit 10 --verified-only
 
 Search includes a weighted `confidence_score` and `is_verified` flag (default threshold `0.80`, configurable via `--verified-min-score`).
 For compatibility, `provider_confidence` is still emitted and equals `confidence_score`.
+Provider text-search cache can be managed with `kcal lookup cache search-list` and `kcal lookup cache search-purge`.
 
 For provider setup, limits, overrides, and cache workflows, see docs below.
 

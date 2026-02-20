@@ -29,8 +29,8 @@ func TestApplyMigrationsIdempotentAndSeedsDefaults(t *testing.T) {
 	if err := sqldb.QueryRow(`SELECT COUNT(1) FROM schema_migrations`).Scan(&migrationCount); err != nil {
 		t.Fatalf("count migrations: %v", err)
 	}
-	if migrationCount != 9 {
-		t.Fatalf("expected 9 migration versions, got %d", migrationCount)
+	if migrationCount != 10 {
+		t.Fatalf("expected 10 migration versions, got %d", migrationCount)
 	}
 
 	var metadataColCount int
@@ -95,6 +95,30 @@ func TestApplyMigrationsIdempotentAndSeedsDefaults(t *testing.T) {
 	}
 	if overrideMicrosColCount != 1 {
 		t.Fatalf("expected micronutrients_json column in barcode_overrides table")
+	}
+
+	var searchCacheTableCount int
+	if err := sqldb.QueryRow(`SELECT COUNT(1) FROM sqlite_master WHERE type = 'table' AND name = 'provider_search_cache'`).Scan(&searchCacheTableCount); err != nil {
+		t.Fatalf("check provider_search_cache table: %v", err)
+	}
+	if searchCacheTableCount != 1 {
+		t.Fatalf("expected provider_search_cache table to exist")
+	}
+
+	var searchCacheIndexCount int
+	if err := sqldb.QueryRow(`SELECT COUNT(1) FROM sqlite_master WHERE type = 'index' AND name = 'idx_provider_search_cache_expires_at'`).Scan(&searchCacheIndexCount); err != nil {
+		t.Fatalf("check provider_search_cache expires index: %v", err)
+	}
+	if searchCacheIndexCount != 1 {
+		t.Fatalf("expected idx_provider_search_cache_expires_at index to exist")
+	}
+
+	var searchCacheQueryIndexCount int
+	if err := sqldb.QueryRow(`SELECT COUNT(1) FROM sqlite_master WHERE type = 'index' AND name = 'idx_provider_search_cache_query_norm'`).Scan(&searchCacheQueryIndexCount); err != nil {
+		t.Fatalf("check provider_search_cache query_norm index: %v", err)
+	}
+	if searchCacheQueryIndexCount != 1 {
+		t.Fatalf("expected idx_provider_search_cache_query_norm index to exist")
 	}
 
 	var categoryCount int

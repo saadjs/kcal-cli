@@ -49,3 +49,41 @@ func TestLookupBarcodeParsesOpenFoodFactsResponse(t *testing.T) {
 		t.Fatalf("expected micronutrient vitamin_c, got %+v", item.Micronutrients)
 	}
 }
+
+func TestSearchFoodsParsesOpenFoodFactsResponse(t *testing.T) {
+	t.Parallel()
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+  "products": [
+    {
+      "_id": "12345",
+      "product_name": "Yogurt Vanilla",
+      "brands": "Brand Co",
+      "serving_quantity": 170,
+      "serving_quantity_unit": "g",
+      "nutriments": {
+        "energy-kcal_serving": 130,
+        "proteins_serving": 9,
+        "carbohydrates_serving": 17,
+        "fat_serving": 3
+      }
+    }
+  ]
+}`))
+	}))
+	defer ts.Close()
+
+	c := &Client{BaseURL: ts.URL, HTTPClient: ts.Client()}
+	items, _, err := c.SearchFoods(context.Background(), "yogurt", 5)
+	if err != nil {
+		t.Fatalf("search foods: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(items))
+	}
+	if items[0].Description != "Yogurt Vanilla" || items[0].SourceID != 12345 {
+		t.Fatalf("unexpected item: %+v", items[0])
+	}
+}

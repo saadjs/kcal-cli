@@ -228,6 +228,25 @@ ALTER TABLE barcode_overrides ADD COLUMN sodium_mg REAL NOT NULL DEFAULT 0 CHECK
 ALTER TABLE barcode_overrides ADD COLUMN micronutrients_json TEXT NOT NULL DEFAULT '';
 `,
 	},
+	{
+		version: 10,
+		name:    "provider_search_cache",
+		sql: `
+CREATE TABLE IF NOT EXISTS provider_search_cache (
+  provider TEXT NOT NULL,
+  query TEXT NOT NULL,
+  query_norm TEXT NOT NULL,
+  limit_requested INTEGER NOT NULL,
+  raw_json TEXT NOT NULL,
+  fetched_at DATETIME NOT NULL,
+  expires_at DATETIME NOT NULL,
+  PRIMARY KEY(provider, query_norm, limit_requested)
+);
+
+CREATE INDEX IF NOT EXISTS idx_provider_search_cache_expires_at ON provider_search_cache(expires_at);
+CREATE INDEX IF NOT EXISTS idx_provider_search_cache_query_norm ON provider_search_cache(query_norm);
+`,
+	},
 }
 
 var defaultCategories = []string{"breakfast", "lunch", "dinner", "snacks"}
