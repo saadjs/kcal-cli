@@ -71,3 +71,148 @@ jobs:
           files: |
             out/*
           generate_release_notes: true
+
+  tap:
+    needs: release
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tap
+        uses: actions/checkout@v4
+        with:
+          repository: saadjs/homebrew-kcal
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+
+      - name: Update formula
+        env:
+          VERSION: ${{ github.ref_name }}
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          SOURCE_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          import re
+          import urllib.request
+
+          version = os.environ["VERSION"]  # e.g. v0.1.0
+          token = os.environ["GH_TOKEN"]
+          source_repo = os.environ["SOURCE_REPO"]  # e.g. saadjs/kcal-cli
+          vclean = version.lstrip("v")
+
+          api = f"https://api.github.com/repos/{source_repo}/releases/tags/{version}"
+          req = urllib.request.Request(
+              api,
+              headers={
+                  "Authorization": f"Bearer {token}",
+                  "Accept": "application/vnd.github+json",
+              },
+          )
+          with urllib.request.urlopen(req) as resp:
+              data = json.load(resp)
+
+          assets = {a["name"]: a["browser_download_url"] for a in data["assets"]}
+          required_assets = [
+              "kcal-darwin-arm64",
+              "kcal-darwin-amd64",
+              "kcal-linux-arm64",
+              "kcal-linux-amd64",
+              "checksums.txt",
+          ]
+          missing = [name for name in required_assets if name not in assets]
+          if missing:
+              raise SystemExit(f"missing expected release assets: {missing}")
+
+          checksums_url = assets["checksums.txt"]
+          checksums_req = urllib.request.Request(
+              checksums_url,
+              headers={
+                  "Authorization": f"Bearer {token}",
+                  "Accept": "application/octet-stream",
+              },
+          )
+          with urllib.request.urlopen(checksums_req) as resp:
+              checksums_text = resp.read().decode("utf-8")
+
+          sha = {}
+          for line in checksums_text.splitlines():
+              line = line.strip()
+              if not line:
+                  continue
+              parts = re.split(r"\s+", line, maxsplit=1)
+              if len(parts) != 2:
+                  continue
+              digest, filename = parts
+              filename = filename.strip()
+              sha[filename] = digest
+
+          for name in required_assets:
+              if name == "checksums.txt":
+                  continue
+              if name not in sha:
+                  raise SystemExit(f"missing checksum for asset: {name}")
+
+          formula = f'''class Kcal < Formula
+            desc "Local-first calorie, macro, and nutrient tracking CLI"
+            homepage "https://github.com/{source_repo}"
+            version "{vclean}"
+
+            on_macos do
+              if Hardware::CPU.arm?
+                url "https://github.com/{source_repo}/releases/download/{version}/kcal-darwin-arm64"
+                sha256 "{sha["kcal-darwin-arm64"]}"
+              else
+                url "https://github.com/{source_repo}/releases/download/{version}/kcal-darwin-amd64"
+                sha256 "{sha["kcal-darwin-amd64"]}"
+              end
+            end
+
+            on_linux do
+              if Hardware::CPU.arm?
+                url "https://github.com/{source_repo}/releases/download/{version}/kcal-linux-arm64"
+                sha256 "{sha["kcal-linux-arm64"]}"
+              else
+                url "https://github.com/{source_repo}/releases/download/{version}/kcal-linux-amd64"
+                sha256 "{sha["kcal-linux-amd64"]}"
+              end
+            end
+
+            def install
+              if OS.mac?
+                if Hardware::CPU.arm?
+                  bin.install "kcal-darwin-arm64" => "kcal"
+                else
+                  bin.install "kcal-darwin-amd64" => "kcal"
+                end
+              elsif OS.linux?
+                if Hardware::CPU.arm?
+                  bin.install "kcal-linux-arm64" => "kcal"
+                else
+                  bin.install "kcal-linux-amd64" => "kcal"
+                end
+              end
+            end
+
+            test do
+              assert_match "kcal", shell_output("#{{bin}}/kcal --help")
+            end
+          end
+          '''
+
+          os.makedirs("tap/Formula", exist_ok=True)
+          with open("tap/Formula/kcal.rb", "w", encoding="utf-8") as f:
+              f.write(formula)
+          PY
+
+          cd tap
+          git add Formula/kcal.rb
+          if git diff --cached --quiet; then
+            echo "No formula changes."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -m "Update kcal ${VERSION}"
+          git push
