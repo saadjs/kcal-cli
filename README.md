@@ -45,6 +45,12 @@ Use `--help` on any command for details.
 go test ./...
 ```
 
+## CI and Releases
+
+- CI runs `gofmt` verification, `go vet`, and `go test ./...` on pushes and pull requests.
+- Tagging a version like `v0.1.0` triggers multi-platform binary builds and publishes a GitHub Release with artifacts and `checksums.txt`.
+- Release process details are in `RELEASE_CHECKLIST.md`.
+
 ## License
 
 MIT (see `LICENSE`).
