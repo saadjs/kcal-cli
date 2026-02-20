@@ -96,7 +96,7 @@ For provider setup, limits, overrides, and cache workflows, see docs below.
 go test ./...
 ```
 
-CI runs formatting verification (`gofmt`), `go vet`, and `go test ./...`.
+Run checks locally before releases or major changes.
 
 ## Project Files
 

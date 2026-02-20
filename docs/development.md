@@ -4,7 +4,7 @@ title: Development
 
 # Development
 
-Purpose: Document local developer workflow, checks, and CI expectations.
+Purpose: Document local developer workflow and checks.
 
 When to use this page:
 - You are contributing code or docs.
@@ -31,13 +31,12 @@ gofmt -l $(find . -name '*.go' -not -path './vendor/*')
 go vet ./...
 ```
 
-## CI Summary
+## Automation Summary
 
-Current CI workflow validates:
-- Go setup via `go.mod` version
-- `gofmt` formatting check
-- `go vet ./...`
-- `go test ./...`
+This repo currently uses GitHub Actions for:
+- Release publishing on version tags.
+- Homebrew formula sync after release.
+- GitHub Pages deployment for docs.
 
 ## Docs Maintenance
 
@@ -53,5 +52,5 @@ Current CI workflow validates:
 ## Failure and Edge Cases
 
 - If `go test ./...` fails at compile time, resolve branch-level API mismatches first.
-- `gofmt` output listing files indicates formatting drift that CI will reject.
+- `gofmt` output listing files indicates formatting drift that should be fixed before publishing.
 - Doc links using absolute `/kcal/...` paths must match `baseurl` in `_config.yml`.
