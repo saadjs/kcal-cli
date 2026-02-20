@@ -10,17 +10,21 @@ import (
 )
 
 type ExportEntry struct {
-	Name       string  `json:"name"`
-	Calories   int     `json:"calories"`
-	ProteinG   float64 `json:"protein_g"`
-	CarbsG     float64 `json:"carbs_g"`
-	FatG       float64 `json:"fat_g"`
-	Category   string  `json:"category"`
-	ConsumedAt string  `json:"consumed_at"`
-	Notes      string  `json:"notes"`
-	SourceType string  `json:"source_type"`
-	SourceID   int64   `json:"source_id,omitempty"`
-	Metadata   string  `json:"metadata_json,omitempty"`
+	Name           string         `json:"name"`
+	Calories       int            `json:"calories"`
+	ProteinG       float64        `json:"protein_g"`
+	CarbsG         float64        `json:"carbs_g"`
+	FatG           float64        `json:"fat_g"`
+	FiberG         float64        `json:"fiber_g"`
+	SugarG         float64        `json:"sugar_g"`
+	SodiumMg       float64        `json:"sodium_mg"`
+	Micronutrients Micronutrients `json:"micronutrients,omitempty"`
+	Category       string         `json:"category"`
+	ConsumedAt     string         `json:"consumed_at"`
+	Notes          string         `json:"notes"`
+	SourceType     string         `json:"source_type"`
+	SourceID       int64          `json:"source_id,omitempty"`
+	Metadata       string         `json:"metadata_json,omitempty"`
 }
 
 type ExportRecipeIngredient struct {
@@ -84,7 +88,7 @@ func ExportDataSnapshot(db *sql.DB) (*ExportData, error) {
 	_ = catRows.Close()
 
 	entryRows, err := db.Query(`
-SELECT e.name, e.calories, e.protein_g, e.carbs_g, e.fat_g, c.name, e.consumed_at, IFNULL(e.notes,''), e.source_type, IFNULL(e.source_id,0), IFNULL(e.metadata_json,'')
+SELECT e.name, e.calories, e.protein_g, e.carbs_g, e.fat_g, e.fiber_g, e.sugar_g, e.sodium_mg, IFNULL(e.micronutrients_json,''), c.name, e.consumed_at, IFNULL(e.notes,''), e.source_type, IFNULL(e.source_id,0), IFNULL(e.metadata_json,'')
 FROM entries e
 JOIN categories c ON c.id = e.category_id
 ORDER BY e.consumed_at ASC`)
@@ -93,10 +97,17 @@ ORDER BY e.consumed_at ASC`)
 	}
 	for entryRows.Next() {
 		var item ExportEntry
-		if err := entryRows.Scan(&item.Name, &item.Calories, &item.ProteinG, &item.CarbsG, &item.FatG, &item.Category, &item.ConsumedAt, &item.Notes, &item.SourceType, &item.SourceID, &item.Metadata); err != nil {
+		var microsRaw string
+		if err := entryRows.Scan(&item.Name, &item.Calories, &item.ProteinG, &item.CarbsG, &item.FatG, &item.FiberG, &item.SugarG, &item.SodiumMg, &microsRaw, &item.Category, &item.ConsumedAt, &item.Notes, &item.SourceType, &item.SourceID, &item.Metadata); err != nil {
 			_ = entryRows.Close()
 			return nil, fmt.Errorf("scan export entry: %w", err)
 		}
+		micros, err := decodeMicronutrientsJSON(microsRaw)
+		if err != nil {
+			_ = entryRows.Close()
+			return nil, fmt.Errorf("decode export entry micronutrients: %w", err)
+		}
+		item.Micronutrients = micros
 		out.Entries = append(out.Entries, item)
 	}
 	_ = entryRows.Close()
@@ -336,7 +347,11 @@ ON CONFLICT(name) DO UPDATE SET calories_total=excluded.calories_total, protein_
 					sourceID.Valid = true
 					sourceID.Int64 = e.SourceID
 				}
-				if _, err := tx.Exec(`UPDATE entries SET calories=?, protein_g=?, carbs_g=?, fat_g=?, notes=?, source_type=?, source_id=?, metadata_json=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`, e.Calories, e.ProteinG, e.CarbsG, e.FatG, e.Notes, e.SourceType, sourceID, e.Metadata, existingID); err != nil {
+				microsJSON, err := EncodeMicronutrientsJSON(e.Micronutrients)
+				if err != nil {
+					return report, fmt.Errorf("merge entry %q micronutrients: %w", e.Name, err)
+				}
+				if _, err := tx.Exec(`UPDATE entries SET calories=?, protein_g=?, carbs_g=?, fat_g=?, fiber_g=?, sugar_g=?, sodium_mg=?, micronutrients_json=?, notes=?, source_type=?, source_id=?, metadata_json=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`, e.Calories, e.ProteinG, e.CarbsG, e.FatG, e.FiberG, e.SugarG, e.SodiumMg, microsJSON, e.Notes, e.SourceType, sourceID, e.Metadata, existingID); err != nil {
 					return report, fmt.Errorf("merge entry %q: %w", e.Name, err)
 				}
 				report.Updated++
@@ -348,10 +363,14 @@ ON CONFLICT(name) DO UPDATE SET calories_total=excluded.calories_total, protein_
 			sourceID.Valid = true
 			sourceID.Int64 = e.SourceID
 		}
+		microsJSON, err := EncodeMicronutrientsJSON(e.Micronutrients)
+		if err != nil {
+			return report, fmt.Errorf("import entry %q micronutrients: %w", e.Name, err)
+		}
 		if _, err := tx.Exec(`
-INSERT INTO entries(name, calories, protein_g, carbs_g, fat_g, category_id, consumed_at, notes, source_type, source_id, metadata_json)
-VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-`, e.Name, e.Calories, e.ProteinG, e.CarbsG, e.FatG, categoryID, e.ConsumedAt, e.Notes, e.SourceType, sourceID, e.Metadata); err != nil {
+INSERT INTO entries(name, calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g, sodium_mg, micronutrients_json, category_id, consumed_at, notes, source_type, source_id, metadata_json)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`, e.Name, e.Calories, e.ProteinG, e.CarbsG, e.FatG, e.FiberG, e.SugarG, e.SodiumMg, microsJSON, categoryID, e.ConsumedAt, e.Notes, e.SourceType, sourceID, e.Metadata); err != nil {
 			return report, fmt.Errorf("import entry %q: %w", e.Name, err)
 		}
 		report.Inserted++

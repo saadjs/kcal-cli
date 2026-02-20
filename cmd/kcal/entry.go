@@ -23,6 +23,10 @@ var (
 	entryProtein       float64
 	entryCarbs         float64
 	entryFat           float64
+	entryFiber         float64
+	entrySugar         float64
+	entrySodium        float64
+	entryMicros        string
 	entryCategory      string
 	entryDate          string
 	entryTime          string
@@ -61,12 +65,13 @@ var entryAddCmd = &cobra.Command{
 }
 
 var (
-	listDate     string
-	listFromDate string
-	listToDate   string
-	listCategory string
-	listLimit    int
-	listMetadata bool
+	listDate      string
+	listFromDate  string
+	listToDate    string
+	listCategory  string
+	listLimit     int
+	listMetadata  bool
+	listNutrients bool
 )
 
 var entryListCmd = &cobra.Command{
@@ -86,16 +91,23 @@ var entryListCmd = &cobra.Command{
 				return err
 			}
 			header := "ID\tDATE\tCATEGORY\tNAME\tKCAL\tP\tC\tF\tSOURCE"
+			if listNutrients {
+				header += "\tFIBER_G\tSUGAR_G\tSODIUM_MG\tMICRONUTRIENTS"
+			}
 			if listMetadata {
 				header += "\tMETADATA"
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), header)
 			for _, e := range entries {
+				base := fmt.Sprintf("%d\t%s\t%s\t%s\t%d\t%.1f\t%.1f\t%.1f\t%s", e.ID, e.ConsumedAt.Local().Format("2006-01-02 15:04"), e.Category, e.Name, e.Calories, e.ProteinG, e.CarbsG, e.FatG, e.SourceType)
+				if listNutrients {
+					base += fmt.Sprintf("\t%.1f\t%.1f\t%.1f\t%s", e.FiberG, e.SugarG, e.SodiumMg, formatMicronutrientsSummary(e.Micronutrients))
+				}
 				if listMetadata {
-					fmt.Fprintf(cmd.OutOrStdout(), "%d\t%s\t%s\t%s\t%d\t%.1f\t%.1f\t%.1f\t%s\t%s\n", e.ID, e.ConsumedAt.Local().Format("2006-01-02 15:04"), e.Category, e.Name, e.Calories, e.ProteinG, e.CarbsG, e.FatG, e.SourceType, e.Metadata)
+					fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\n", base, e.Metadata)
 					continue
 				}
-				fmt.Fprintf(cmd.OutOrStdout(), "%d\t%s\t%s\t%s\t%d\t%.1f\t%.1f\t%.1f\t%s\n", e.ID, e.ConsumedAt.Local().Format("2006-01-02 15:04"), e.Category, e.Name, e.Calories, e.ProteinG, e.CarbsG, e.FatG, e.SourceType)
+				fmt.Fprintln(cmd.OutOrStdout(), base)
 			}
 			return nil
 		})
@@ -122,6 +134,8 @@ var entryShowCmd = &cobra.Command{
 			fmt.Fprintf(cmd.OutOrStdout(), "Name: %s\n", e.Name)
 			fmt.Fprintf(cmd.OutOrStdout(), "Calories: %d\n", e.Calories)
 			fmt.Fprintf(cmd.OutOrStdout(), "Protein: %.1f\nCarbs: %.1f\nFat: %.1f\n", e.ProteinG, e.CarbsG, e.FatG)
+			fmt.Fprintf(cmd.OutOrStdout(), "Fiber: %.1fg\nSugar: %.1fg\nSodium: %.1fmg\n", e.FiberG, e.SugarG, e.SodiumMg)
+			fmt.Fprintf(cmd.OutOrStdout(), "Micronutrients: %s\n", formatMicronutrientsSummary(e.Micronutrients))
 			fmt.Fprintf(cmd.OutOrStdout(), "Source: %s\n", e.SourceType)
 			if e.SourceID != nil {
 				fmt.Fprintf(cmd.OutOrStdout(), "Source ID: %d\n", *e.SourceID)
@@ -139,6 +153,10 @@ var (
 	updateProtein  float64
 	updateCarbs    float64
 	updateFat      float64
+	updateFiber    float64
+	updateSugar    float64
+	updateSodium   float64
+	updateMicros   string
 	updateCategory string
 	updateDate     string
 	updateTime     string
@@ -161,17 +179,21 @@ var entryUpdateCmd = &cobra.Command{
 		}
 
 		in := service.UpdateEntryInput{
-			ID:          id,
-			Name:        updateName,
-			Calories:    updateCalories,
-			ProteinG:    updateProtein,
-			CarbsG:      updateCarbs,
-			FatG:        updateFat,
-			Category:    updateCategory,
-			Consumed:    consumed,
-			Notes:       updateNotes,
-			Metadata:    updateMetadata,
-			MetadataSet: cmd.Flags().Changed("metadata-json"),
+			ID:             id,
+			Name:           updateName,
+			Calories:       updateCalories,
+			ProteinG:       updateProtein,
+			CarbsG:         updateCarbs,
+			FatG:           updateFat,
+			FiberG:         updateFiber,
+			SugarG:         updateSugar,
+			SodiumMg:       updateSodium,
+			Micronutrients: updateMicros,
+			Category:       updateCategory,
+			Consumed:       consumed,
+			Notes:          updateNotes,
+			Metadata:       updateMetadata,
+			MetadataSet:    cmd.Flags().Changed("metadata-json"),
 		}
 		return withDB(func(sqldb *sql.DB) error {
 			if err := service.UpdateEntry(sqldb, in); err != nil {
@@ -229,6 +251,10 @@ func addEntryFields(cmd *cobra.Command, prefix string) {
 	cmd.Flags().Float64Var(&entryProtein, "protein", 0, "Protein grams")
 	cmd.Flags().Float64Var(&entryCarbs, "carbs", 0, "Carbs grams")
 	cmd.Flags().Float64Var(&entryFat, "fat", 0, "Fat grams")
+	cmd.Flags().Float64Var(&entryFiber, "fiber", 0, "Fiber grams")
+	cmd.Flags().Float64Var(&entrySugar, "sugar", 0, "Sugar grams")
+	cmd.Flags().Float64Var(&entrySodium, "sodium", 0, "Sodium milligrams")
+	cmd.Flags().StringVar(&entryMicros, "micros-json", "", "Micronutrients JSON object")
 	cmd.Flags().StringVar(&entryCategory, "category", "", "Category name")
 	cmd.Flags().StringVar(&entryDate, "date", "", "Date in YYYY-MM-DD")
 	cmd.Flags().StringVar(&entryTime, "time", "", "Time in HH:MM")
@@ -253,16 +279,20 @@ func buildEntryAddInput(sqldb *sql.DB, consumed time.Time) (service.CreateEntryI
 			return service.CreateEntryInput{}, fmt.Errorf("--name is required when --barcode is not used")
 		}
 		return service.CreateEntryInput{
-			Name:       entryName,
-			Calories:   entryCalories,
-			ProteinG:   entryProtein,
-			CarbsG:     entryCarbs,
-			FatG:       entryFat,
-			Category:   entryCategory,
-			Consumed:   consumed,
-			Notes:      entryNotes,
-			SourceType: "manual",
-			Metadata:   entryMetadata,
+			Name:           entryName,
+			Calories:       entryCalories,
+			ProteinG:       entryProtein,
+			CarbsG:         entryCarbs,
+			FatG:           entryFat,
+			FiberG:         entryFiber,
+			SugarG:         entrySugar,
+			SodiumMg:       entrySodium,
+			Micronutrients: entryMicros,
+			Category:       entryCategory,
+			Consumed:       consumed,
+			Notes:          entryNotes,
+			SourceType:     "manual",
+			Metadata:       entryMetadata,
 		}, nil
 	}
 
@@ -270,8 +300,11 @@ func buildEntryAddInput(sqldb *sql.DB, consumed time.Time) (service.CreateEntryI
 		entryCalories != 0 ||
 		entryProtein != 0 ||
 		entryCarbs != 0 ||
-		entryFat != 0 {
-		return service.CreateEntryInput{}, fmt.Errorf("cannot combine --barcode with manual nutrition flags (--name/--calories/--protein/--carbs/--fat)")
+		entryFat != 0 ||
+		entryFiber != 0 ||
+		entrySugar != 0 ||
+		entrySodium != 0 {
+		return service.CreateEntryInput{}, fmt.Errorf("cannot combine --barcode with manual nutrition flags (--name/--calories/--protein/--carbs/--fat/--fiber/--sugar/--sodium)")
 	}
 	if entryServings <= 0 {
 		return service.CreateEntryInput{}, fmt.Errorf("--servings must be > 0")
@@ -291,18 +324,31 @@ func buildEntryAddInput(sqldb *sql.DB, consumed time.Time) (service.CreateEntryI
 	if err != nil {
 		return service.CreateEntryInput{}, err
 	}
+	baseMicros := service.ScaleMicronutrients(result.Micronutrients, entryServings)
+	userMicros, err := service.ParseMicronutrientsJSON(entryMicros)
+	if err != nil {
+		return service.CreateEntryInput{}, err
+	}
+	microsJSON, err := service.EncodeMicronutrientsJSON(service.MergeMicronutrients(baseMicros, userMicros))
+	if err != nil {
+		return service.CreateEntryInput{}, err
+	}
 	return service.CreateEntryInput{
-		Name:       fmt.Sprintf("%s (barcode %s x%.2f)", result.Description, result.Barcode, entryServings),
-		Calories:   int(math.Round(result.Calories * entryServings)),
-		ProteinG:   result.ProteinG * entryServings,
-		CarbsG:     result.CarbsG * entryServings,
-		FatG:       result.FatG * entryServings,
-		Category:   entryCategory,
-		Consumed:   consumed,
-		Notes:      entryNotes,
-		SourceType: "barcode",
-		SourceID:   sourceID,
-		Metadata:   metadata,
+		Name:           fmt.Sprintf("%s (barcode %s x%.2f)", result.Description, result.Barcode, entryServings),
+		Calories:       int(math.Round(result.Calories * entryServings)),
+		ProteinG:       result.ProteinG * entryServings,
+		CarbsG:         result.CarbsG * entryServings,
+		FatG:           result.FatG * entryServings,
+		FiberG:         result.FiberG * entryServings,
+		SugarG:         result.SugarG * entryServings,
+		SodiumMg:       result.SodiumMg * entryServings,
+		Micronutrients: microsJSON,
+		Category:       entryCategory,
+		Consumed:       consumed,
+		Notes:          entryNotes,
+		SourceType:     "barcode",
+		SourceID:       sourceID,
+		Metadata:       metadata,
 	}, nil
 }
 
@@ -346,6 +392,18 @@ func parseMetadataObject(value string) (map[string]any, error) {
 	return out, nil
 }
 
+func formatMicronutrientsSummary(raw string) string {
+	m, err := service.ParseMicronutrientsJSON(raw)
+	if err != nil || len(m) == 0 {
+		return "-"
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		return "-"
+	}
+	return string(b)
+}
+
 func init() {
 	rootCmd.AddCommand(entryCmd)
 	entryCmd.AddCommand(entryAddCmd, entryListCmd, entryShowCmd, entryMetadataCmd, entryUpdateCmd, entryDeleteCmd)
@@ -359,12 +417,17 @@ func init() {
 	entryListCmd.Flags().StringVar(&listCategory, "category", "", "Filter by category")
 	entryListCmd.Flags().IntVar(&listLimit, "limit", 50, "Result limit")
 	entryListCmd.Flags().BoolVar(&listMetadata, "with-metadata", false, "Include metadata JSON column")
+	entryListCmd.Flags().BoolVar(&listNutrients, "with-nutrients", false, "Include richer nutrient columns")
 
 	entryUpdateCmd.Flags().StringVar(&updateName, "name", "", "Entry name")
 	entryUpdateCmd.Flags().IntVar(&updateCalories, "calories", 0, "Calories")
 	entryUpdateCmd.Flags().Float64Var(&updateProtein, "protein", 0, "Protein grams")
 	entryUpdateCmd.Flags().Float64Var(&updateCarbs, "carbs", 0, "Carbs grams")
 	entryUpdateCmd.Flags().Float64Var(&updateFat, "fat", 0, "Fat grams")
+	entryUpdateCmd.Flags().Float64Var(&updateFiber, "fiber", 0, "Fiber grams")
+	entryUpdateCmd.Flags().Float64Var(&updateSugar, "sugar", 0, "Sugar grams")
+	entryUpdateCmd.Flags().Float64Var(&updateSodium, "sodium", 0, "Sodium milligrams")
+	entryUpdateCmd.Flags().StringVar(&updateMicros, "micros-json", "", "Micronutrients JSON object")
 	entryUpdateCmd.Flags().StringVar(&updateCategory, "category", "", "Category name")
 	entryUpdateCmd.Flags().StringVar(&updateDate, "date", "", "Date in YYYY-MM-DD")
 	entryUpdateCmd.Flags().StringVar(&updateTime, "time", "", "Time in HH:MM")

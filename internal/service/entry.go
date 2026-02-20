@@ -11,17 +11,21 @@ import (
 )
 
 type CreateEntryInput struct {
-	Name       string
-	Calories   int
-	ProteinG   float64
-	CarbsG     float64
-	FatG       float64
-	Category   string
-	Consumed   time.Time
-	Notes      string
-	SourceType string
-	SourceID   *int64
-	Metadata   string
+	Name           string
+	Calories       int
+	ProteinG       float64
+	CarbsG         float64
+	FatG           float64
+	FiberG         float64
+	SugarG         float64
+	SodiumMg       float64
+	Micronutrients string
+	Category       string
+	Consumed       time.Time
+	Notes          string
+	SourceType     string
+	SourceID       *int64
+	Metadata       string
 }
 
 type ListEntriesFilter struct {
@@ -33,17 +37,21 @@ type ListEntriesFilter struct {
 }
 
 type UpdateEntryInput struct {
-	ID          int64
-	Name        string
-	Calories    int
-	ProteinG    float64
-	CarbsG      float64
-	FatG        float64
-	Category    string
-	Consumed    time.Time
-	Notes       string
-	Metadata    string
-	MetadataSet bool
+	ID             int64
+	Name           string
+	Calories       int
+	ProteinG       float64
+	CarbsG         float64
+	FatG           float64
+	FiberG         float64
+	SugarG         float64
+	SodiumMg       float64
+	Micronutrients string
+	Category       string
+	Consumed       time.Time
+	Notes          string
+	Metadata       string
+	MetadataSet    bool
 }
 
 func CreateEntry(db *sql.DB, in CreateEntryInput) (int64, error) {
@@ -63,6 +71,15 @@ func CreateEntry(db *sql.DB, in CreateEntryInput) (int64, error) {
 	if err := validateNonNegativeFloat("fat", in.FatG); err != nil {
 		return 0, err
 	}
+	if err := validateNonNegativeFloat("fiber", in.FiberG); err != nil {
+		return 0, err
+	}
+	if err := validateNonNegativeFloat("sugar", in.SugarG); err != nil {
+		return 0, err
+	}
+	if err := validateNonNegativeFloat("sodium", in.SodiumMg); err != nil {
+		return 0, err
+	}
 	if in.Consumed.IsZero() {
 		in.Consumed = time.Now()
 	}
@@ -77,11 +94,15 @@ func CreateEntry(db *sql.DB, in CreateEntryInput) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
+	micronutrients, err := normalizeMicronutrientsJSON(in.Micronutrients)
+	if err != nil {
+		return 0, err
+	}
 
 	res, err := db.Exec(`
-INSERT INTO entries(name, calories, protein_g, carbs_g, fat_g, category_id, consumed_at, notes, source_type, source_id, metadata_json)
-VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-`, in.Name, in.Calories, in.ProteinG, in.CarbsG, in.FatG, categoryID, in.Consumed.Format(time.RFC3339), strings.TrimSpace(in.Notes), in.SourceType, in.SourceID, metadata)
+INSERT INTO entries(name, calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g, sodium_mg, micronutrients_json, category_id, consumed_at, notes, source_type, source_id, metadata_json)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`, in.Name, in.Calories, in.ProteinG, in.CarbsG, in.FatG, in.FiberG, in.SugarG, in.SodiumMg, micronutrients, categoryID, in.Consumed.Format(time.RFC3339), strings.TrimSpace(in.Notes), in.SourceType, in.SourceID, metadata)
 	if err != nil {
 		return 0, fmt.Errorf("insert entry: %w", err)
 	}
@@ -98,7 +119,7 @@ func ListEntries(db *sql.DB, f ListEntriesFilter) ([]model.Entry, error) {
 	}
 
 	query := `
-SELECT e.id, e.name, e.calories, e.protein_g, e.carbs_g, e.fat_g, e.category_id, c.name, e.consumed_at, IFNULL(e.notes, ''), e.source_type, e.source_id, IFNULL(e.metadata_json, '')
+SELECT e.id, e.name, e.calories, e.protein_g, e.carbs_g, e.fat_g, e.fiber_g, e.sugar_g, e.sodium_mg, IFNULL(e.micronutrients_json, ''), e.category_id, c.name, e.consumed_at, IFNULL(e.notes, ''), e.source_type, e.source_id, IFNULL(e.metadata_json, '')
 FROM entries e
 JOIN categories c ON c.id = e.category_id
 WHERE 1=1`
@@ -151,7 +172,7 @@ WHERE 1=1`
 		var e model.Entry
 		var consumedAtRaw string
 		var sourceID sql.NullInt64
-		if err := rows.Scan(&e.ID, &e.Name, &e.Calories, &e.ProteinG, &e.CarbsG, &e.FatG, &e.CategoryID, &e.Category, &consumedAtRaw, &e.Notes, &e.SourceType, &sourceID, &e.Metadata); err != nil {
+		if err := rows.Scan(&e.ID, &e.Name, &e.Calories, &e.ProteinG, &e.CarbsG, &e.FatG, &e.FiberG, &e.SugarG, &e.SodiumMg, &e.Micronutrients, &e.CategoryID, &e.Category, &consumedAtRaw, &e.Notes, &e.SourceType, &sourceID, &e.Metadata); err != nil {
 			return nil, fmt.Errorf("scan entry: %w", err)
 		}
 		consumedAt, err := time.Parse(time.RFC3339, consumedAtRaw)
@@ -191,6 +212,15 @@ func UpdateEntry(db *sql.DB, in UpdateEntryInput) error {
 	if err := validateNonNegativeFloat("fat", in.FatG); err != nil {
 		return err
 	}
+	if err := validateNonNegativeFloat("fiber", in.FiberG); err != nil {
+		return err
+	}
+	if err := validateNonNegativeFloat("sugar", in.SugarG); err != nil {
+		return err
+	}
+	if err := validateNonNegativeFloat("sodium", in.SodiumMg); err != nil {
+		return err
+	}
 	if in.Consumed.IsZero() {
 		return fmt.Errorf("consumed time is required")
 	}
@@ -200,8 +230,12 @@ func UpdateEntry(db *sql.DB, in UpdateEntryInput) error {
 	}
 	query := `
 UPDATE entries
-SET name = ?, calories = ?, protein_g = ?, carbs_g = ?, fat_g = ?, category_id = ?, consumed_at = ?, notes = ?`
-	args := []any{in.Name, in.Calories, in.ProteinG, in.CarbsG, in.FatG, categoryID, in.Consumed.Format(time.RFC3339), strings.TrimSpace(in.Notes)}
+SET name = ?, calories = ?, protein_g = ?, carbs_g = ?, fat_g = ?, fiber_g = ?, sugar_g = ?, sodium_mg = ?, micronutrients_json = ?, category_id = ?, consumed_at = ?, notes = ?`
+	micronutrients, err := normalizeMicronutrientsJSON(in.Micronutrients)
+	if err != nil {
+		return err
+	}
+	args := []any{in.Name, in.Calories, in.ProteinG, in.CarbsG, in.FatG, in.FiberG, in.SugarG, in.SodiumMg, micronutrients, categoryID, in.Consumed.Format(time.RFC3339), strings.TrimSpace(in.Notes)}
 	if in.MetadataSet {
 		metadata, err := normalizeEntryMetadata(in.Metadata)
 		if err != nil {
@@ -232,7 +266,7 @@ func EntryByID(db *sql.DB, id int64) (*model.Entry, error) {
 		return nil, fmt.Errorf("entry id must be > 0")
 	}
 	row := db.QueryRow(`
-SELECT e.id, e.name, e.calories, e.protein_g, e.carbs_g, e.fat_g, e.category_id, c.name, e.consumed_at, IFNULL(e.notes, ''), e.source_type, e.source_id, IFNULL(e.metadata_json, '')
+SELECT e.id, e.name, e.calories, e.protein_g, e.carbs_g, e.fat_g, e.fiber_g, e.sugar_g, e.sodium_mg, IFNULL(e.micronutrients_json, ''), e.category_id, c.name, e.consumed_at, IFNULL(e.notes, ''), e.source_type, e.source_id, IFNULL(e.metadata_json, '')
 FROM entries e
 JOIN categories c ON c.id = e.category_id
 WHERE e.id = ?
@@ -241,7 +275,7 @@ WHERE e.id = ?
 	var e model.Entry
 	var consumedAtRaw string
 	var sourceID sql.NullInt64
-	if err := row.Scan(&e.ID, &e.Name, &e.Calories, &e.ProteinG, &e.CarbsG, &e.FatG, &e.CategoryID, &e.Category, &consumedAtRaw, &e.Notes, &e.SourceType, &sourceID, &e.Metadata); err != nil {
+	if err := row.Scan(&e.ID, &e.Name, &e.Calories, &e.ProteinG, &e.CarbsG, &e.FatG, &e.FiberG, &e.SugarG, &e.SodiumMg, &e.Micronutrients, &e.CategoryID, &e.Category, &consumedAtRaw, &e.Notes, &e.SourceType, &sourceID, &e.Metadata); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("entry %d not found", id)
 		}

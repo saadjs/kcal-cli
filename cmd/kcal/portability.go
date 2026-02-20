@@ -56,7 +56,7 @@ var exportCmd = &cobra.Command{
 				defer f.Close()
 				w := csv.NewWriter(f)
 				defer w.Flush()
-				if err := w.Write([]string{"name", "calories", "protein_g", "carbs_g", "fat_g", "category", "consumed_at", "notes", "source_type", "source_id", "metadata_json"}); err != nil {
+				if err := w.Write([]string{"name", "calories", "protein_g", "carbs_g", "fat_g", "fiber_g", "sugar_g", "sodium_mg", "micronutrients_json", "category", "consumed_at", "notes", "source_type", "source_id", "metadata_json"}); err != nil {
 					return fmt.Errorf("write export csv header: %w", err)
 				}
 				for _, e := range entries {
@@ -70,6 +70,10 @@ var exportCmd = &cobra.Command{
 						strconv.FormatFloat(e.ProteinG, 'f', -1, 64),
 						strconv.FormatFloat(e.CarbsG, 'f', -1, 64),
 						strconv.FormatFloat(e.FatG, 'f', -1, 64),
+						strconv.FormatFloat(e.FiberG, 'f', -1, 64),
+						strconv.FormatFloat(e.SugarG, 'f', -1, 64),
+						strconv.FormatFloat(e.SodiumMg, 'f', -1, 64),
+						e.Micronutrients,
 						e.Category,
 						e.ConsumedAt.Format("2006-01-02T15:04:05-07:00"),
 						e.Notes,
@@ -135,37 +139,70 @@ var importCmd = &cobra.Command{
 				}
 				for i := 1; i < len(records); i++ {
 					row := records[i]
-					if len(row) < 11 {
-						return fmt.Errorf("csv row %d has %d columns, expected 11", i+1, len(row))
+					if len(row) != 11 && len(row) != 15 {
+						return fmt.Errorf("csv row %d has %d columns, expected 11 (legacy) or 15", i+1, len(row))
 					}
 					kcal, _ := strconv.Atoi(row[1])
 					protein, _ := strconv.ParseFloat(row[2], 64)
 					carbs, _ := strconv.ParseFloat(row[3], 64)
 					fat, _ := strconv.ParseFloat(row[4], 64)
-					sourceIDVal, _ := strconv.ParseInt(strings.TrimSpace(row[9]), 10, 64)
+					fiber := 0.0
+					sugar := 0.0
+					sodium := 0.0
+					micros := ""
+					categoryIdx := 5
+					consumedAtIdx := 6
+					notesIdx := 7
+					sourceTypeIdx := 8
+					sourceIDIdx := 9
+					metadataIdx := 10
+					if len(row) == 15 {
+						fiber, _ = strconv.ParseFloat(row[5], 64)
+						sugar, _ = strconv.ParseFloat(row[6], 64)
+						sodium, _ = strconv.ParseFloat(row[7], 64)
+						micros = row[8]
+						categoryIdx = 9
+						consumedAtIdx = 10
+						notesIdx = 11
+						sourceTypeIdx = 12
+						sourceIDIdx = 13
+						metadataIdx = 14
+					}
+					sourceIDVal, _ := strconv.ParseInt(strings.TrimSpace(row[sourceIDIdx]), 10, 64)
 					var sourceID *int64
 					if sourceIDVal > 0 {
 						sourceID = &sourceIDVal
 					}
-					consumed, err := parseCSVTime(row[6])
+					consumed, err := parseCSVTime(row[consumedAtIdx])
 					if err != nil {
 						return fmt.Errorf("csv row %d consumed_at: %w", i+1, err)
+					}
+					categoryName := strings.ToLower(strings.TrimSpace(row[categoryIdx]))
+					if categoryName == "" {
+						return fmt.Errorf("csv row %d category is required", i+1)
 					}
 					if importDryRun {
 						continue
 					}
+					if _, err := sqldb.Exec(`INSERT OR IGNORE INTO categories(name, is_default) VALUES(?, 0)`, categoryName); err != nil {
+						return fmt.Errorf("import csv row %d category %q: %w", i+1, categoryName, err)
+					}
 					if _, err := service.CreateEntry(sqldb, service.CreateEntryInput{
-						Name:       row[0],
-						Calories:   kcal,
-						ProteinG:   protein,
-						CarbsG:     carbs,
-						FatG:       fat,
-						Category:   row[5],
-						Consumed:   consumed,
-						Notes:      row[7],
-						SourceType: row[8],
-						SourceID:   sourceID,
-						Metadata:   row[10],
+						Name:           row[0],
+						Calories:       kcal,
+						ProteinG:       protein,
+						CarbsG:         carbs,
+						FatG:           fat,
+						FiberG:         fiber,
+						SugarG:         sugar,
+						SodiumMg:       sodium,
+						Micronutrients: micros,
+						Category:       categoryName,
+						Consumed:       consumed,
+						Notes:          row[notesIdx],
+						SourceType:     row[sourceTypeIdx],
+						SourceID:       sourceID,
+						Metadata:       row[metadataIdx],
 					}); err != nil {
 						return fmt.Errorf("import csv row %d: %w", i+1, err)
 					}
