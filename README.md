@@ -48,8 +48,26 @@ go build -o kcal .
 - `kcal recipe add|list|show|update|delete|log|recalc`
 - `kcal recipe ingredient add|list|update|delete`
 - `kcal analytics week|month|range`
+- `kcal lookup barcode <code> [--api-key ...] [--json]`
 
 Use `--help` on any command for details.
+
+## Barcode Lookup (USDA)
+
+```bash
+export KCAL_USDA_API_KEY=your_key_here
+./kcal lookup barcode 012345678905
+./kcal lookup usda-help
+```
+
+API key resolution order:
+- `--api-key` flag
+- `KCAL_USDA_API_KEY`
+- `KCAL_BARCODE_API_KEY` (legacy fallback)
+
+Rate limit note:
+- USDA default limit is `1,000 requests/hour/IP`.
+- `kcal` caches barcode lookups in SQLite to reduce repeated provider calls.
 
 ## Testing
 
