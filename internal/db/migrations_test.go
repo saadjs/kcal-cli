@@ -29,8 +29,8 @@ func TestApplyMigrationsIdempotentAndSeedsDefaults(t *testing.T) {
 	if err := sqldb.QueryRow(`SELECT COUNT(1) FROM schema_migrations`).Scan(&migrationCount); err != nil {
 		t.Fatalf("count migrations: %v", err)
 	}
-	if migrationCount != 10 {
-		t.Fatalf("expected 10 migration versions, got %d", migrationCount)
+	if migrationCount != 11 {
+		t.Fatalf("expected 11 migration versions, got %d", migrationCount)
 	}
 
 	var metadataColCount int
@@ -119,6 +119,30 @@ func TestApplyMigrationsIdempotentAndSeedsDefaults(t *testing.T) {
 	}
 	if searchCacheQueryIndexCount != 1 {
 		t.Fatalf("expected idx_provider_search_cache_query_norm index to exist")
+	}
+
+	var savedFoodsTableCount int
+	if err := sqldb.QueryRow(`SELECT COUNT(1) FROM sqlite_master WHERE type = 'table' AND name = 'saved_foods'`).Scan(&savedFoodsTableCount); err != nil {
+		t.Fatalf("check saved_foods table: %v", err)
+	}
+	if savedFoodsTableCount != 1 {
+		t.Fatalf("expected saved_foods table to exist")
+	}
+
+	var savedMealsTableCount int
+	if err := sqldb.QueryRow(`SELECT COUNT(1) FROM sqlite_master WHERE type = 'table' AND name = 'saved_meals'`).Scan(&savedMealsTableCount); err != nil {
+		t.Fatalf("check saved_meals table: %v", err)
+	}
+	if savedMealsTableCount != 1 {
+		t.Fatalf("expected saved_meals table to exist")
+	}
+
+	var savedMealComponentsTableCount int
+	if err := sqldb.QueryRow(`SELECT COUNT(1) FROM sqlite_master WHERE type = 'table' AND name = 'saved_meal_components'`).Scan(&savedMealComponentsTableCount); err != nil {
+		t.Fatalf("check saved_meal_components table: %v", err)
+	}
+	if savedMealComponentsTableCount != 1 {
+		t.Fatalf("expected saved_meal_components table to exist")
 	}
 
 	var categoryCount int

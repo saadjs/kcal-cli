@@ -247,6 +247,94 @@ CREATE INDEX IF NOT EXISTS idx_provider_search_cache_expires_at ON provider_sear
 CREATE INDEX IF NOT EXISTS idx_provider_search_cache_query_norm ON provider_search_cache(query_norm);
 `,
 	},
+	{
+		version: 11,
+		name:    "saved_templates",
+		sql: `
+CREATE TABLE IF NOT EXISTS saved_foods (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  name_norm TEXT NOT NULL UNIQUE,
+  brand TEXT NOT NULL DEFAULT '',
+  default_category_id INTEGER NOT NULL,
+  calories INTEGER NOT NULL CHECK(calories >= 0),
+  protein_g REAL NOT NULL CHECK(protein_g >= 0),
+  carbs_g REAL NOT NULL CHECK(carbs_g >= 0),
+  fat_g REAL NOT NULL CHECK(fat_g >= 0),
+  fiber_g REAL NOT NULL CHECK(fiber_g >= 0),
+  sugar_g REAL NOT NULL CHECK(sugar_g >= 0),
+  sodium_mg REAL NOT NULL CHECK(sodium_mg >= 0),
+  micronutrients_json TEXT NOT NULL DEFAULT '',
+  serving_amount REAL NOT NULL DEFAULT 1 CHECK(serving_amount > 0),
+  serving_unit TEXT NOT NULL DEFAULT 'serving',
+  source_type TEXT NOT NULL DEFAULT 'manual',
+  source_provider TEXT NOT NULL DEFAULT '',
+  source_ref TEXT NOT NULL DEFAULT '',
+  notes TEXT NOT NULL DEFAULT '',
+  metadata_json TEXT NOT NULL DEFAULT '',
+  usage_count INTEGER NOT NULL DEFAULT 0 CHECK(usage_count >= 0),
+  last_used_at DATETIME,
+  archived_at DATETIME,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(default_category_id) REFERENCES categories(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_saved_foods_name_norm ON saved_foods(name_norm);
+CREATE INDEX IF NOT EXISTS idx_saved_foods_archived_at ON saved_foods(archived_at);
+CREATE INDEX IF NOT EXISTS idx_saved_foods_last_used_at ON saved_foods(last_used_at);
+
+CREATE TABLE IF NOT EXISTS saved_meals (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  name_norm TEXT NOT NULL UNIQUE,
+  default_category_id INTEGER NOT NULL,
+  notes TEXT NOT NULL DEFAULT '',
+  calories_total INTEGER NOT NULL DEFAULT 0 CHECK(calories_total >= 0),
+  protein_total_g REAL NOT NULL DEFAULT 0 CHECK(protein_total_g >= 0),
+  carbs_total_g REAL NOT NULL DEFAULT 0 CHECK(carbs_total_g >= 0),
+  fat_total_g REAL NOT NULL DEFAULT 0 CHECK(fat_total_g >= 0),
+  fiber_total_g REAL NOT NULL DEFAULT 0 CHECK(fiber_total_g >= 0),
+  sugar_total_g REAL NOT NULL DEFAULT 0 CHECK(sugar_total_g >= 0),
+  sodium_total_mg REAL NOT NULL DEFAULT 0 CHECK(sodium_total_mg >= 0),
+  micronutrients_json TEXT NOT NULL DEFAULT '',
+  usage_count INTEGER NOT NULL DEFAULT 0 CHECK(usage_count >= 0),
+  last_used_at DATETIME,
+  archived_at DATETIME,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(default_category_id) REFERENCES categories(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_saved_meals_name_norm ON saved_meals(name_norm);
+CREATE INDEX IF NOT EXISTS idx_saved_meals_archived_at ON saved_meals(archived_at);
+CREATE INDEX IF NOT EXISTS idx_saved_meals_last_used_at ON saved_meals(last_used_at);
+
+CREATE TABLE IF NOT EXISTS saved_meal_components (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  saved_meal_id INTEGER NOT NULL,
+  saved_food_id INTEGER,
+  position INTEGER NOT NULL DEFAULT 0,
+  name TEXT NOT NULL,
+  quantity REAL NOT NULL DEFAULT 1 CHECK(quantity > 0),
+  unit TEXT NOT NULL DEFAULT 'serving',
+  calories INTEGER NOT NULL CHECK(calories >= 0),
+  protein_g REAL NOT NULL CHECK(protein_g >= 0),
+  carbs_g REAL NOT NULL CHECK(carbs_g >= 0),
+  fat_g REAL NOT NULL CHECK(fat_g >= 0),
+  fiber_g REAL NOT NULL CHECK(fiber_g >= 0),
+  sugar_g REAL NOT NULL CHECK(sugar_g >= 0),
+  sodium_mg REAL NOT NULL CHECK(sodium_mg >= 0),
+  micronutrients_json TEXT NOT NULL DEFAULT '',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(saved_meal_id) REFERENCES saved_meals(id) ON DELETE CASCADE,
+  FOREIGN KEY(saved_food_id) REFERENCES saved_foods(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_saved_meal_components_meal_position ON saved_meal_components(saved_meal_id, position);
+`,
+	},
 }
 
 var defaultCategories = []string{"breakfast", "lunch", "dinner", "snacks"}
