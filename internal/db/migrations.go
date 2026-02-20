@@ -75,6 +75,55 @@ CREATE INDEX IF NOT EXISTS idx_entries_consumed_at ON entries(consumed_at);
 CREATE INDEX IF NOT EXISTS idx_entries_category_id ON entries(category_id);
 `,
 	},
+	{
+		version: 2,
+		name:    "body_tracking",
+		sql: `
+CREATE TABLE IF NOT EXISTS body_measurements (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  measured_at DATETIME NOT NULL,
+  weight_kg REAL NOT NULL CHECK(weight_kg > 0),
+  body_fat_pct REAL CHECK(body_fat_pct >= 0 AND body_fat_pct <= 100),
+  notes TEXT,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_body_measurements_measured_at ON body_measurements(measured_at);
+
+CREATE TABLE IF NOT EXISTS body_goals (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  target_weight_kg REAL NOT NULL CHECK(target_weight_kg > 0),
+  target_body_fat_pct REAL CHECK(target_body_fat_pct >= 0 AND target_body_fat_pct <= 100),
+  target_date TEXT,
+  effective_date TEXT NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(effective_date)
+);
+`,
+	},
+	{
+		version: 3,
+		name:    "recipe_ingredients",
+		sql: `
+CREATE TABLE IF NOT EXISTS recipe_ingredients (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  recipe_id INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  amount REAL NOT NULL CHECK(amount > 0),
+  amount_unit TEXT NOT NULL,
+  calories INTEGER NOT NULL CHECK(calories >= 0),
+  protein_g REAL NOT NULL CHECK(protein_g >= 0),
+  carbs_g REAL NOT NULL CHECK(carbs_g >= 0),
+  fat_g REAL NOT NULL CHECK(fat_g >= 0),
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(recipe_id) REFERENCES recipes(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_recipe_ingredients_recipe_id ON recipe_ingredients(recipe_id);
+`,
+	},
 }
 
 var defaultCategories = []string{"breakfast", "lunch", "dinner", "snacks"}

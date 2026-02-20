@@ -46,3 +46,34 @@ type Recipe struct {
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
 }
+
+type BodyMeasurement struct {
+	ID         int64
+	MeasuredAt time.Time
+	WeightKg   float64
+	BodyFatPct *float64
+	Notes      string
+}
+
+type BodyGoal struct {
+	ID               int64
+	TargetWeightKg   float64
+	TargetBodyFatPct *float64
+	TargetDate       string
+	EffectiveDate    string
+	CreatedAt        time.Time
+}
+
+type RecipeIngredient struct {
+	ID         int64
+	RecipeID   int64
+	Name       string
+	Amount     float64
+	AmountUnit string
+	Calories   int
+	ProteinG   float64
+	CarbsG     float64
+	FatG       float64
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+}

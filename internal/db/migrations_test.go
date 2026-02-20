@@ -29,8 +29,8 @@ func TestApplyMigrationsIdempotentAndSeedsDefaults(t *testing.T) {
 	if err := sqldb.QueryRow(`SELECT COUNT(1) FROM schema_migrations`).Scan(&migrationCount); err != nil {
 		t.Fatalf("count migrations: %v", err)
 	}
-	if migrationCount != 1 {
-		t.Fatalf("expected 1 migration version, got %d", migrationCount)
+	if migrationCount != 3 {
+		t.Fatalf("expected 3 migration versions, got %d", migrationCount)
 	}
 
 	var categoryCount int
