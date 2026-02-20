@@ -38,7 +38,7 @@ Then verify GitHub release assets and checksums.
 
 ## Checklist and History
 
-- Track notable changes in `/Users/saad/src/kcal-cli/CHANGELOG.md`
+- Track notable changes in [`CHANGELOG.md`](../CHANGELOG.md)
 
 ## Docs Drift Guard
 
