@@ -7,8 +7,6 @@ import (
 )
 
 func TestRootHelp(t *testing.T) {
-	t.Parallel()
-
 	buf := &bytes.Buffer{}
 	rootCmd.SetOut(buf)
 	rootCmd.SetErr(buf)
@@ -23,8 +21,6 @@ func TestRootHelp(t *testing.T) {
 }
 
 func TestInitCommandIdempotent(t *testing.T) {
-	t.Parallel()
-
 	path := filepath.Join(t.TempDir(), "kcal.db")
 	for i := 0; i < 2; i++ {
 		buf := &bytes.Buffer{}

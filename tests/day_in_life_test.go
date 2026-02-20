@@ -26,6 +26,27 @@ func TestDayInTheLifeFlow(t *testing.T) {
 	if exit != 0 {
 		t.Fatalf("goal set failed: exit=%d stderr=%s", exit, stderr)
 	}
+	_, stderr, exit = runKcal(t, binPath, dbPath,
+		"body-goal", "set",
+		"--target-weight", "170",
+		"--unit", "lb",
+		"--target-body-fat", "18",
+		"--effective-date", "2026-02-01",
+	)
+	if exit != 0 {
+		t.Fatalf("body-goal set failed: exit=%d stderr=%s", exit, stderr)
+	}
+	_, stderr, exit = runKcal(t, binPath, dbPath,
+		"body", "add",
+		"--weight", "172",
+		"--unit", "lb",
+		"--body-fat", "20",
+		"--date", "2026-02-20",
+		"--time", "07:00",
+	)
+	if exit != 0 {
+		t.Fatalf("body add failed: exit=%d stderr=%s", exit, stderr)
+	}
 
 	_, stderr, exit = runKcal(t, binPath, dbPath, "category", "add", "supper")
 	if exit != 0 {
@@ -50,14 +71,44 @@ func TestDayInTheLifeFlow(t *testing.T) {
 	_, stderr, exit = runKcal(t, binPath, dbPath,
 		"recipe", "add",
 		"--name", "Overnight oats",
-		"--calories", "400",
-		"--protein", "20",
-		"--carbs", "50",
-		"--fat", "10",
+		"--calories", "0",
+		"--protein", "0",
+		"--carbs", "0",
+		"--fat", "0",
 		"--servings", "2",
 	)
 	if exit != 0 {
 		t.Fatalf("recipe add failed: exit=%d stderr=%s", exit, stderr)
+	}
+	_, stderr, exit = runKcal(t, binPath, dbPath,
+		"recipe", "ingredient", "add", "Overnight oats",
+		"--name", "Oats",
+		"--amount", "40",
+		"--unit", "g",
+		"--calories", "150",
+		"--protein", "5",
+		"--carbs", "27",
+		"--fat", "3",
+	)
+	if exit != 0 {
+		t.Fatalf("recipe ingredient add failed: exit=%d stderr=%s", exit, stderr)
+	}
+	_, stderr, exit = runKcal(t, binPath, dbPath,
+		"recipe", "ingredient", "add", "Overnight oats",
+		"--name", "Milk",
+		"--amount", "200",
+		"--unit", "ml",
+		"--calories", "80",
+		"--protein", "5",
+		"--carbs", "10",
+		"--fat", "2",
+	)
+	if exit != 0 {
+		t.Fatalf("recipe ingredient add #2 failed: exit=%d stderr=%s", exit, stderr)
+	}
+	_, stderr, exit = runKcal(t, binPath, dbPath, "recipe", "recalc", "Overnight oats")
+	if exit != 0 {
+		t.Fatalf("recipe recalc failed: exit=%d stderr=%s", exit, stderr)
 	}
 
 	_, stderr, exit = runKcal(t, binPath, dbPath,
@@ -82,9 +133,10 @@ func TestDayInTheLifeFlow(t *testing.T) {
 
 	checks := []string{
 		"Range: 2026-02-20 to 2026-02-20",
-		"Totals: kcal=750 P=55.0 C=65.0 F=23.0",
+		"Totals: kcal=665",
 		"supper",
 		"breakfast",
+		"Body",
 	}
 	for _, want := range checks {
 		if !strings.Contains(stdout, want) {

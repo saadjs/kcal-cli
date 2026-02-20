@@ -59,6 +59,30 @@ func TestAnalyticsRangeTotalsAndAdherence(t *testing.T) {
 			t.Fatalf("create seed entry %s: %v", e.Name, err)
 		}
 	}
+	if err := service.SetBodyGoal(db, service.SetBodyGoalInput{
+		TargetWeight:  78,
+		Unit:          "kg",
+		TargetBodyFat: floatPtr(19),
+		EffectiveDate: "2026-02-01",
+	}); err != nil {
+		t.Fatalf("set body goal: %v", err)
+	}
+	if _, err := service.AddBodyMeasurement(db, service.BodyMeasurementInput{
+		Weight:     80,
+		Unit:       "kg",
+		BodyFatPct: floatPtr(21),
+		MeasuredAt: time.Date(2026, 2, 10, 7, 0, 0, 0, time.Local),
+	}); err != nil {
+		t.Fatalf("add body measurement 1: %v", err)
+	}
+	if _, err := service.AddBodyMeasurement(db, service.BodyMeasurementInput{
+		Weight:     79.5,
+		Unit:       "kg",
+		BodyFatPct: floatPtr(20.5),
+		MeasuredAt: time.Date(2026, 2, 11, 7, 0, 0, 0, time.Local),
+	}); err != nil {
+		t.Fatalf("add body measurement 2: %v", err)
+	}
 
 	report, err := service.AnalyticsRange(
 		db,
@@ -81,5 +105,11 @@ func TestAnalyticsRangeTotalsAndAdherence(t *testing.T) {
 	}
 	if len(report.ByCategory) != 3 {
 		t.Fatalf("expected 3 categories in breakdown, got %d", len(report.ByCategory))
+	}
+	if report.Body.MeasurementsCount != 2 {
+		t.Fatalf("expected 2 body points, got %d", report.Body.MeasurementsCount)
+	}
+	if report.Body.GoalProgress == nil {
+		t.Fatalf("expected goal progress in body summary")
 	}
 }
