@@ -30,6 +30,8 @@ go build -o kcal .
 ./kcal recipe add --name "Overnight oats" --calories 0 --protein 0 --carbs 0 --fat 0 --servings 2
 ./kcal recipe ingredient add "Overnight oats" --name Oats --amount 40 --unit g --calories 150 --protein 5 --carbs 27 --fat 3
 ./kcal recipe ingredient add "Overnight oats" --name Milk --amount 200 --unit ml --calories 80 --protein 5 --carbs 10 --fat 2
+# Scaling helper example (auto-scale from reference macros; density needed for volume<->mass)
+./kcal recipe ingredient add "Overnight oats" --name PeanutButter --amount 2 --unit tbsp --ref-amount 32 --ref-unit g --ref-calories 190 --ref-protein 7 --ref-carbs 8 --ref-fat 16 --density-g-per-ml 1.05
 ./kcal recipe recalc "Overnight oats"
 ./kcal recipe log "Overnight oats" --servings 1 --category breakfast
 ./kcal analytics week

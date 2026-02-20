@@ -114,3 +114,58 @@ func TestRecipeIngredientLifecycleAndRecalc(t *testing.T) {
 		t.Fatalf("expected recalculated calories in recipe show output, got:\n%s", stdout)
 	}
 }
+
+func TestRecipeIngredientScalingAndDensityValidation(t *testing.T) {
+	binPath := buildKcalBinary(t)
+	dbPath := filepath.Join(t.TempDir(), "kcal.db")
+	initDB(t, binPath, dbPath)
+
+	_, stderr, exit := runKcal(t, binPath, dbPath,
+		"recipe", "add",
+		"--name", "PB Smoothie",
+		"--calories", "0",
+		"--protein", "0",
+		"--carbs", "0",
+		"--fat", "0",
+		"--servings", "1",
+	)
+	if exit != 0 {
+		t.Fatalf("recipe add failed: exit=%d stderr=%s", exit, stderr)
+	}
+
+	_, stderr, exit = runKcal(t, binPath, dbPath,
+		"recipe", "ingredient", "add", "PB Smoothie",
+		"--name", "Peanut Butter",
+		"--amount", "2",
+		"--unit", "tbsp",
+		"--ref-amount", "32",
+		"--ref-unit", "g",
+		"--ref-calories", "190",
+		"--ref-protein", "7",
+		"--ref-carbs", "8",
+		"--ref-fat", "16",
+	)
+	if exit == 0 {
+		t.Fatalf("expected mass/volume scaling without density to fail")
+	}
+	if !strings.Contains(stderr, "density-g-per-ml must be > 0") {
+		t.Fatalf("expected density error, got: %s", stderr)
+	}
+
+	_, stderr, exit = runKcal(t, binPath, dbPath,
+		"recipe", "ingredient", "add", "PB Smoothie",
+		"--name", "Peanut Butter",
+		"--amount", "2",
+		"--unit", "tbsp",
+		"--ref-amount", "32",
+		"--ref-unit", "g",
+		"--ref-calories", "190",
+		"--ref-protein", "7",
+		"--ref-carbs", "8",
+		"--ref-fat", "16",
+		"--density-g-per-ml", "1.05",
+	)
+	if exit != 0 {
+		t.Fatalf("expected scaling with density to succeed: exit=%d stderr=%s", exit, stderr)
+	}
+}
