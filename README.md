@@ -52,6 +52,7 @@ go build -o kcal .
 - `kcal lookup providers`
 - `kcal lookup usda-help`
 - `kcal lookup openfoodfacts-help`
+- `kcal lookup override set|show|list|delete ...`
 
 Use `--help` on any command for details.
 
@@ -74,6 +75,13 @@ Rate limit note:
 - USDA default limit is `1,000 requests/hour/IP`.
 - Open Food Facts uses fair-use limits and requires a descriptive user-agent.
 - `kcal` caches barcode lookups in SQLite to reduce repeated provider calls.
+
+Local correction workflow:
+```bash
+./kcal lookup override set 3017620422003 --provider openfoodfacts --name "Nutella Custom" --brand Ferrero --serving-amount 15 --serving-unit g --calories 99 --protein 1 --carbs 10 --fat 6
+./kcal lookup barcode 3017620422003 --provider openfoodfacts
+```
+Override resolution order is: local override -> cache -> live provider.
 
 ## Testing
 

@@ -169,3 +169,38 @@ func TestRecipeIngredientScalingAndDensityValidation(t *testing.T) {
 		t.Fatalf("expected scaling with density to succeed: exit=%d stderr=%s", exit, stderr)
 	}
 }
+
+func TestBarcodeOverrideIsUsedByLookup(t *testing.T) {
+	binPath := buildKcalBinary(t)
+	dbPath := filepath.Join(t.TempDir(), "kcal.db")
+	initDB(t, binPath, dbPath)
+
+	_, stderr, exit := runKcal(t, binPath, dbPath,
+		"lookup", "override", "set", "3017620422003",
+		"--provider", "openfoodfacts",
+		"--name", "Nutella Custom",
+		"--brand", "Ferrero",
+		"--serving-amount", "15",
+		"--serving-unit", "g",
+		"--calories", "99",
+		"--protein", "1",
+		"--carbs", "10",
+		"--fat", "6",
+	)
+	if exit != 0 {
+		t.Fatalf("override set failed: exit=%d stderr=%s", exit, stderr)
+	}
+
+	stdout, stderr, exit := runKcal(t, binPath, dbPath,
+		"lookup", "barcode", "3017620422003", "--provider", "openfoodfacts",
+	)
+	if exit != 0 {
+		t.Fatalf("lookup with override failed: exit=%d stderr=%s", exit, stderr)
+	}
+	if !strings.Contains(stdout, "Provider: openfoodfacts (override)") {
+		t.Fatalf("expected override source output, got: %s", stdout)
+	}
+	if !strings.Contains(stdout, "Food: Nutella Custom") || !strings.Contains(stdout, "Calories: 99.0") {
+		t.Fatalf("expected override nutrition output, got: %s", stdout)
+	}
+}
