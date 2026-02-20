@@ -42,15 +42,15 @@ This repo currently uses GitHub Actions for:
 
 - Keep README concise and route advanced content to `/docs` pages.
 - Validate internal docs links after edits.
-- Keep examples aligned with command definitions in `cmd/kcal/*.go`.
+- Keep examples aligned with command definitions in `cmd/kcal-cli/*.go`.
 
 ## See Also
 
-- [Releases](/kcal/releases/)
-- [Command Reference](/kcal/reference/commands/)
+- [Releases](/kcal-cli/releases/)
+- [Command Reference](/kcal-cli/reference/commands/)
 
 ## Failure and Edge Cases
 
 - If `go test ./...` fails at compile time, resolve branch-level API mismatches first.
 - `gofmt` output listing files indicates formatting drift that should be fixed before publishing.
-- Doc links using absolute `/kcal/...` paths must match `baseurl` in `_config.yml`.
+- Doc links using absolute `/kcal-cli/...` paths must match `baseurl` in `_config.yml`.

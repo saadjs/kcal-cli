@@ -85,8 +85,8 @@ Lookup resolution order is:
 
 ## See Also
 
-- [Barcode Providers](/kcal/guides/barcode-providers/)
-- [Command Reference](/kcal/reference/commands/)
+- [Barcode Providers](/kcal-cli/guides/barcode-providers/)
+- [Command Reference](/kcal-cli/reference/commands/)
 
 ## Failure and Edge Cases
 

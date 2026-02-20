@@ -1,6 +1,6 @@
 title: kcal-cli Docs
 description: Documentation for the kcal local-first nutrition CLI
-baseurl: "/kcal"
+baseurl: "/kcal-cli"
 url: "https://saadjs.github.io"
 theme: minima
 markdown: kramdown

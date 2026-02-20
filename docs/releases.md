@@ -44,7 +44,7 @@ Then verify GitHub release assets and checksums.
 
 Before tagging:
 - Confirm README command map matches current top-level commands.
-- Confirm docs examples still match `cmd/kcal/*.go` behavior.
+- Confirm docs examples still match `cmd/kcal-cli/*.go` behavior.
 
 ## Failure and Edge Cases
 

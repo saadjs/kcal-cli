@@ -75,8 +75,8 @@ Notes:
 
 ## See Also
 
-- [Lookup Overrides and Cache](/kcal/guides/lookup-overrides-and-cache/)
-- [Config and Paths](/kcal/reference/config-and-paths/)
+- [Lookup Overrides and Cache](/kcal-cli/guides/lookup-overrides-and-cache/)
+- [Config and Paths](/kcal-cli/reference/config-and-paths/)
 
 ## Failure and Edge Cases
 

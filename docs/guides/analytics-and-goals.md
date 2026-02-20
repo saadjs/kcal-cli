@@ -54,8 +54,8 @@ kcal analytics insights range --from 2026-02-01 --to 2026-02-20 --granularity au
 
 ## See Also
 
-- [Getting Started](/kcal/getting-started/)
-- [Command Reference](/kcal/reference/commands/)
+- [Getting Started](/kcal-cli/getting-started/)
+- [Command Reference](/kcal-cli/reference/commands/)
 
 ## Failure and Edge Cases
 

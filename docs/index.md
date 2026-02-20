@@ -12,23 +12,23 @@ When to use this page:
 
 ## Start Here
 
-- [Installation](/kcal/installation/)
-- [Getting Started](/kcal/getting-started/)
-- [Command Reference](/kcal/reference/commands/)
-- [Config and Paths](/kcal/reference/config-and-paths/)
+- [Installation](/kcal-cli/installation/)
+- [Getting Started](/kcal-cli/getting-started/)
+- [Command Reference](/kcal-cli/reference/commands/)
+- [Config and Paths](/kcal-cli/reference/config-and-paths/)
 
 ## Guides
 
-- [Barcode Providers](/kcal/guides/barcode-providers/)
-- [Lookup Overrides and Cache](/kcal/guides/lookup-overrides-and-cache/)
-- [Import and Export](/kcal/guides/import-export/)
-- [Backups and Recovery](/kcal/guides/backups-and-recovery/)
-- [Analytics and Goals](/kcal/guides/analytics-and-goals/)
+- [Barcode Providers](/kcal-cli/guides/barcode-providers/)
+- [Lookup Overrides and Cache](/kcal-cli/guides/lookup-overrides-and-cache/)
+- [Import and Export](/kcal-cli/guides/import-export/)
+- [Backups and Recovery](/kcal-cli/guides/backups-and-recovery/)
+- [Analytics and Goals](/kcal-cli/guides/analytics-and-goals/)
 
 ## Project Operations
 
-- [Development](/kcal/development/)
-- [Releases](/kcal/releases/)
+- [Development](/kcal-cli/development/)
+- [Releases](/kcal-cli/releases/)
 
 ## Command Examples
 

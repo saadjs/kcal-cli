@@ -35,7 +35,7 @@ go build -o kcal .
 
 ## Next Step
 
-- Continue to [Getting Started](/kcal/getting-started/).
+- Continue to [Getting Started](/kcal-cli/getting-started/).
 
 ## Failure and Edge Cases
 

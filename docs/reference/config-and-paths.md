@@ -53,8 +53,8 @@ kcal config get
 - Local override and cache layers can satisfy lookup before live provider calls.
 
 See also:
-- [Barcode Providers](/kcal/guides/barcode-providers/)
-- [Lookup Overrides and Cache](/kcal/guides/lookup-overrides-and-cache/)
+- [Barcode Providers](/kcal-cli/guides/barcode-providers/)
+- [Lookup Overrides and Cache](/kcal-cli/guides/lookup-overrides-and-cache/)
 
 ## Failure and Edge Cases
 

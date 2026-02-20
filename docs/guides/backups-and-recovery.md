@@ -61,8 +61,8 @@ kcal doctor
 
 ## See Also
 
-- [Import and Export](/kcal/guides/import-export/)
-- [Releases](/kcal/releases/)
+- [Import and Export](/kcal-cli/guides/import-export/)
+- [Releases](/kcal-cli/releases/)
 
 ## Failure and Edge Cases
 

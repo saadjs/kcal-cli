@@ -31,9 +31,9 @@ kcal body add --weight 172 --unit lb --date 2026-02-20 --time 07:00
 
 ## Where to Go Next
 
-- [Command Reference](/kcal/reference/commands/)
-- [Analytics and Goals](/kcal/guides/analytics-and-goals/)
-- [Barcode Providers](/kcal/guides/barcode-providers/)
+- [Command Reference](/kcal-cli/reference/commands/)
+- [Analytics and Goals](/kcal-cli/guides/analytics-and-goals/)
+- [Barcode Providers](/kcal-cli/guides/barcode-providers/)
 
 ## Failure and Edge Cases
 

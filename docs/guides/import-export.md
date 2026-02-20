@@ -62,8 +62,8 @@ kcal doctor
 
 ## See Also
 
-- [Backups and Recovery](/kcal/guides/backups-and-recovery/)
-- [Development](/kcal/development/)
+- [Backups and Recovery](/kcal-cli/guides/backups-and-recovery/)
+- [Development](/kcal-cli/development/)
 
 ## Failure and Edge Cases
 
