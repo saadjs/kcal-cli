@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"sort"
 	"time"
+
+	"github.com/saad/kcal-cli/internal/model"
 )
 
 type CategoryBreakdown struct {
@@ -17,11 +19,18 @@ type CategoryBreakdown struct {
 }
 
 type DaySummary struct {
-	Date     string  `json:"date"`
-	Calories int     `json:"calories"`
-	Protein  float64 `json:"protein_g"`
-	Carbs    float64 `json:"carbs_g"`
-	Fat      float64 `json:"fat_g"`
+	Date                  string  `json:"date"`
+	Calories              int     `json:"calories"`
+	Protein               float64 `json:"protein_g"`
+	Carbs                 float64 `json:"carbs_g"`
+	Fat                   float64 `json:"fat_g"`
+	IntakeCalories        int     `json:"intake_calories"`
+	ExerciseCalories      int     `json:"exercise_calories"`
+	NetCalories           int     `json:"net_calories"`
+	EffectiveGoalCalories int     `json:"effective_goal_calories"`
+	EffectiveGoalProtein  float64 `json:"effective_goal_protein_g"`
+	EffectiveGoalCarbs    float64 `json:"effective_goal_carbs_g"`
+	EffectiveGoalFat      float64 `json:"effective_goal_fat_g"`
 }
 
 type BodyPoint struct {
@@ -71,24 +80,30 @@ type MetadataSummary struct {
 }
 
 type AnalyticsReport struct {
-	FromDate              string              `json:"from_date"`
-	ToDate                string              `json:"to_date"`
-	TotalCalories         int                 `json:"total_calories"`
-	TotalProtein          float64             `json:"total_protein_g"`
-	TotalCarbs            float64             `json:"total_carbs_g"`
-	TotalFat              float64             `json:"total_fat_g"`
-	DaysWithEntries       int                 `json:"days_with_entries"`
-	AverageCaloriesPerDay float64             `json:"avg_calories_per_day"`
-	AverageProteinPerDay  float64             `json:"avg_protein_per_day"`
-	AverageCarbsPerDay    float64             `json:"avg_carbs_per_day"`
-	AverageFatPerDay      float64             `json:"avg_fat_per_day"`
-	HighestDay            *DaySummary         `json:"highest_day,omitempty"`
-	LowestDay             *DaySummary         `json:"lowest_day,omitempty"`
-	Adherence             AdherenceSummary    `json:"adherence"`
-	ByCategory            []CategoryBreakdown `json:"by_category"`
-	Days                  []DaySummary        `json:"days"`
-	Body                  BodySummary         `json:"body"`
-	Metadata              MetadataSummary     `json:"metadata"`
+	FromDate                      string              `json:"from_date"`
+	ToDate                        string              `json:"to_date"`
+	TotalCalories                 int                 `json:"total_calories"`
+	TotalIntakeCalories           int                 `json:"total_intake_calories"`
+	TotalExerciseCalories         int                 `json:"total_exercise_calories"`
+	TotalNetCalories              int                 `json:"total_net_calories"`
+	TotalProtein                  float64             `json:"total_protein_g"`
+	TotalCarbs                    float64             `json:"total_carbs_g"`
+	TotalFat                      float64             `json:"total_fat_g"`
+	DaysWithEntries               int                 `json:"days_with_entries"`
+	AverageCaloriesPerDay         float64             `json:"avg_calories_per_day"`
+	AverageIntakeCaloriesPerDay   float64             `json:"avg_intake_calories_per_day"`
+	AverageExerciseCaloriesPerDay float64             `json:"avg_exercise_calories_per_day"`
+	AverageNetCaloriesPerDay      float64             `json:"avg_net_calories_per_day"`
+	AverageProteinPerDay          float64             `json:"avg_protein_per_day"`
+	AverageCarbsPerDay            float64             `json:"avg_carbs_per_day"`
+	AverageFatPerDay              float64             `json:"avg_fat_per_day"`
+	HighestDay                    *DaySummary         `json:"highest_day,omitempty"`
+	LowestDay                     *DaySummary         `json:"lowest_day,omitempty"`
+	Adherence                     AdherenceSummary    `json:"adherence"`
+	ByCategory                    []CategoryBreakdown `json:"by_category"`
+	Days                          []DaySummary        `json:"days"`
+	Body                          BodySummary         `json:"body"`
+	Metadata                      MetadataSummary     `json:"metadata"`
 }
 
 type AdherenceSummary struct {
@@ -110,15 +125,23 @@ func AnalyticsRange(db *sql.DB, from, to time.Time, tolerance float64) (*Analyti
 		ToDate:   to.Format("2006-01-02"),
 	}
 
-	days, err := loadDaySummaries(db, from, to)
+	intakeByDay, err := loadIntakeDaySummaries(db, from, to)
 	if err != nil {
 		return nil, err
 	}
+	exerciseByDay, err := loadExerciseCaloriesByDay(db, from, to)
+	if err != nil {
+		return nil, err
+	}
+	days := mergeDaySummaries(intakeByDay, exerciseByDay)
 	report.Days = days
 	report.DaysWithEntries = len(days)
 
 	for i := range days {
 		report.TotalCalories += days[i].Calories
+		report.TotalIntakeCalories += days[i].IntakeCalories
+		report.TotalExerciseCalories += days[i].ExerciseCalories
+		report.TotalNetCalories += days[i].NetCalories
 		report.TotalProtein += days[i].Protein
 		report.TotalCarbs += days[i].Carbs
 		report.TotalFat += days[i].Fat
@@ -126,10 +149,12 @@ func AnalyticsRange(db *sql.DB, from, to time.Time, tolerance float64) (*Analyti
 	if report.DaysWithEntries > 0 {
 		div := float64(report.DaysWithEntries)
 		report.AverageCaloriesPerDay = float64(report.TotalCalories) / div
+		report.AverageIntakeCaloriesPerDay = float64(report.TotalIntakeCalories) / div
+		report.AverageExerciseCaloriesPerDay = float64(report.TotalExerciseCalories) / div
+		report.AverageNetCaloriesPerDay = float64(report.TotalNetCalories) / div
 		report.AverageProteinPerDay = report.TotalProtein / div
 		report.AverageCarbsPerDay = report.TotalCarbs / div
 		report.AverageFatPerDay = report.TotalFat / div
-		report.HighestDay, report.LowestDay = extremeDays(days)
 	}
 
 	categories, err := loadCategoryBreakdown(db, from, to)
@@ -143,6 +168,10 @@ func AnalyticsRange(db *sql.DB, from, to time.Time, tolerance float64) (*Analyti
 		return nil, err
 	}
 	report.Adherence = adherence
+	report.Days = days
+	if report.DaysWithEntries > 0 {
+		report.HighestDay, report.LowestDay = extremeDays(days)
+	}
 
 	body, err := calculateBodySummary(db, from, to)
 	if err != nil {
@@ -159,7 +188,7 @@ func AnalyticsRange(db *sql.DB, from, to time.Time, tolerance float64) (*Analyti
 	return report, nil
 }
 
-func loadDaySummaries(db *sql.DB, from, to time.Time) ([]DaySummary, error) {
+func loadIntakeDaySummaries(db *sql.DB, from, to time.Time) (map[string]DaySummary, error) {
 	rows, err := db.Query(`
 SELECT substr(consumed_at, 1, 10) as day, SUM(calories), SUM(protein_g), SUM(carbs_g), SUM(fat_g)
 FROM entries
@@ -168,22 +197,80 @@ GROUP BY day
 ORDER BY day ASC
 `, from.Format(time.RFC3339), to.Add(24*time.Hour).Format(time.RFC3339))
 	if err != nil {
-		return nil, fmt.Errorf("query day summaries: %w", err)
+		return nil, fmt.Errorf("query intake day summaries: %w", err)
 	}
 	defer rows.Close()
 
-	items := make([]DaySummary, 0)
+	items := make(map[string]DaySummary)
 	for rows.Next() {
 		var d DaySummary
 		if err := rows.Scan(&d.Date, &d.Calories, &d.Protein, &d.Carbs, &d.Fat); err != nil {
 			return nil, fmt.Errorf("scan day summary: %w", err)
 		}
-		items = append(items, d)
+		d.IntakeCalories = d.Calories
+		items[d.Date] = d
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate day summaries: %w", err)
 	}
 	return items, nil
+}
+
+func loadExerciseCaloriesByDay(db *sql.DB, from, to time.Time) (map[string]int, error) {
+	rows, err := db.Query(`
+SELECT substr(performed_at, 1, 10) as day, SUM(calories_burned)
+FROM exercise_logs
+WHERE performed_at >= ? AND performed_at < ?
+GROUP BY day
+ORDER BY day ASC
+`, from.Format(time.RFC3339), to.Add(24*time.Hour).Format(time.RFC3339))
+	if err != nil {
+		return nil, fmt.Errorf("query exercise day summaries: %w", err)
+	}
+	defer rows.Close()
+
+	items := make(map[string]int)
+	for rows.Next() {
+		var day string
+		var calories int
+		if err := rows.Scan(&day, &calories); err != nil {
+			return nil, fmt.Errorf("scan exercise day summary: %w", err)
+		}
+		items[day] = calories
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate exercise day summaries: %w", err)
+	}
+	return items, nil
+}
+
+func mergeDaySummaries(intakeByDay map[string]DaySummary, exerciseByDay map[string]int) []DaySummary {
+	seen := make(map[string]struct{})
+	keys := make([]string, 0, len(intakeByDay)+len(exerciseByDay))
+	for day := range intakeByDay {
+		seen[day] = struct{}{}
+		keys = append(keys, day)
+	}
+	for day := range exerciseByDay {
+		if _, ok := seen[day]; ok {
+			continue
+		}
+		keys = append(keys, day)
+	}
+	sort.Strings(keys)
+
+	out := make([]DaySummary, 0, len(keys))
+	for _, day := range keys {
+		d := DaySummary{Date: day}
+		if intake, ok := intakeByDay[day]; ok {
+			d = intake
+		}
+		d.IntakeCalories = d.Calories
+		d.ExerciseCalories = exerciseByDay[day]
+		d.NetCalories = d.IntakeCalories - d.ExerciseCalories
+		out = append(out, d)
+	}
+	return out
 }
 
 func loadCategoryBreakdown(db *sql.DB, from, to time.Time) ([]CategoryBreakdown, error) {
@@ -216,8 +303,8 @@ ORDER BY SUM(e.calories) DESC
 
 func calculateAdherence(db *sql.DB, days []DaySummary, tolerance float64) (AdherenceSummary, error) {
 	out := AdherenceSummary{}
-	for _, d := range days {
-		goal, err := CurrentGoal(db, d.Date)
+	for i := range days {
+		goal, err := CurrentGoal(db, days[i].Date)
 		if err != nil {
 			return out, err
 		}
@@ -225,11 +312,17 @@ func calculateAdherence(db *sql.DB, days []DaySummary, tolerance float64) (Adher
 			out.SkippedGoalDays++
 			continue
 		}
+		effectiveCalories, effectiveProtein, effectiveCarbs, effectiveFat := effectiveGoalTargets(*goal, days[i].ExerciseCalories)
+		days[i].EffectiveGoalCalories = effectiveCalories
+		days[i].EffectiveGoalProtein = effectiveProtein
+		days[i].EffectiveGoalCarbs = effectiveCarbs
+		days[i].EffectiveGoalFat = effectiveFat
+
 		out.EvaluatedDays++
-		if float64(d.Calories) <= float64(goal.Calories) &&
-			AdherenceWithin(d.Protein, goal.ProteinG, tolerance) &&
-			AdherenceWithin(d.Carbs, goal.CarbsG, tolerance) &&
-			AdherenceWithin(d.Fat, goal.FatG, tolerance) {
+		if float64(days[i].NetCalories) <= float64(goal.Calories) &&
+			AdherenceWithin(days[i].Protein, effectiveProtein, tolerance) &&
+			AdherenceWithin(days[i].Carbs, effectiveCarbs, tolerance) &&
+			AdherenceWithin(days[i].Fat, effectiveFat, tolerance) {
 			out.WithinGoalDays++
 		}
 	}
@@ -237,6 +330,28 @@ func calculateAdherence(db *sql.DB, days []DaySummary, tolerance float64) (Adher
 		out.PercentWithin = (float64(out.WithinGoalDays) / float64(out.EvaluatedDays)) * 100
 	}
 	return out, nil
+}
+
+func effectiveGoalTargets(goal model.Goal, exerciseCalories int) (int, float64, float64, float64) {
+	effectiveCalories := goal.Calories + exerciseCalories
+
+	baseProtein := goal.ProteinG
+	baseCarbs := goal.CarbsG
+	baseFat := goal.FatG
+	macroEnergy := (baseProtein * 4) + (baseCarbs * 4) + (baseFat * 9)
+	if macroEnergy == 0 || exerciseCalories == 0 {
+		return effectiveCalories, baseProtein, baseCarbs, baseFat
+	}
+
+	extraCalories := float64(exerciseCalories)
+	proteinShare := (baseProtein * 4) / macroEnergy
+	carbsShare := (baseCarbs * 4) / macroEnergy
+	fatShare := (baseFat * 9) / macroEnergy
+
+	effectiveProtein := baseProtein + ((extraCalories * proteinShare) / 4)
+	effectiveCarbs := baseCarbs + ((extraCalories * carbsShare) / 4)
+	effectiveFat := baseFat + ((extraCalories * fatShare) / 9)
+	return effectiveCalories, effectiveProtein, effectiveCarbs, effectiveFat
 }
 
 func calculateBodySummary(db *sql.DB, from, to time.Time) (BodySummary, error) {
@@ -344,7 +459,7 @@ func extremeDays(days []DaySummary) (*DaySummary, *DaySummary) {
 	copied := make([]DaySummary, len(days))
 	copy(copied, days)
 	sort.SliceStable(copied, func(i, j int) bool {
-		return copied[i].Calories < copied[j].Calories
+		return copied[i].NetCalories < copied[j].NetCalories
 	})
 	low := copied[0]
 	high := copied[len(copied)-1]

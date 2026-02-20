@@ -580,6 +580,46 @@ func TestImportDryRunDoesNotWrite(t *testing.T) {
 	}
 }
 
+func TestEntryRichNutrientsDisplay(t *testing.T) {
+	binPath := buildKcalBinary(t)
+	dbPath := filepath.Join(t.TempDir(), "kcal.db")
+	initDB(t, binPath, dbPath)
+
+	_, stderr, exit := runKcal(t, binPath, dbPath, "entry", "add",
+		"--name", "Micronutrient Meal",
+		"--calories", "320",
+		"--protein", "20",
+		"--carbs", "35",
+		"--fat", "10",
+		"--fiber", "8",
+		"--sugar", "6",
+		"--sodium", "350",
+		"--micros-json", `{"vitamin_c":{"value":40,"unit":"mg"}}`,
+		"--category", "lunch",
+		"--date", "2026-02-20",
+		"--time", "12:30",
+	)
+	if exit != 0 {
+		t.Fatalf("entry add failed: exit=%d stderr=%s", exit, stderr)
+	}
+
+	listOut, stderr, exit := runKcal(t, binPath, dbPath, "entry", "list", "--with-nutrients")
+	if exit != 0 {
+		t.Fatalf("entry list --with-nutrients failed: exit=%d stderr=%s", exit, stderr)
+	}
+	if !strings.Contains(listOut, "FIBER_G") || !strings.Contains(listOut, "SODIUM_MG") || !strings.Contains(listOut, "vitamin_c") {
+		t.Fatalf("expected richer nutrient columns and values in list output, got: %s", listOut)
+	}
+
+	showOut, stderr, exit := runKcal(t, binPath, dbPath, "entry", "show", "1")
+	if exit != 0 {
+		t.Fatalf("entry show failed: exit=%d stderr=%s", exit, stderr)
+	}
+	if !strings.Contains(showOut, "Fiber: 8.0g") || !strings.Contains(showOut, "Sodium: 350.0mg") || !strings.Contains(showOut, "vitamin_c") {
+		t.Fatalf("expected richer nutrient fields in show output, got: %s", showOut)
+	}
+}
+
 func TestBackupCreateAndRestore(t *testing.T) {
 	binPath := buildKcalBinary(t)
 	dir := t.TempDir()

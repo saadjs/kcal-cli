@@ -218,6 +218,42 @@ func TestCLIEntryAddRejectsInvalidMetadataJSON(t *testing.T) {
 	}
 }
 
+func TestCLIExerciseAddRejectsDistanceUnitWithoutDistance(t *testing.T) {
+	binPath := buildKcalBinary(t)
+	dbPath := filepath.Join(t.TempDir(), "kcal.db")
+	initDB(t, binPath, dbPath)
+
+	_, stderr, exit := runKcal(t, binPath, dbPath,
+		"exercise", "add",
+		"--type", "running",
+		"--calories", "200",
+		"--distance-unit", "km",
+	)
+	if exit == 0 {
+		t.Fatalf("expected exercise add to fail when distance unit is set without distance")
+	}
+	if !strings.Contains(stderr, "distance must be provided when distance unit is set") {
+		t.Fatalf("expected distance pairing error, got: %s", stderr)
+	}
+}
+
+func TestCLIExerciseAddAllowsNoDistance(t *testing.T) {
+	binPath := buildKcalBinary(t)
+	dbPath := filepath.Join(t.TempDir(), "kcal.db")
+	initDB(t, binPath, dbPath)
+
+	_, stderr, exit := runKcal(t, binPath, dbPath,
+		"exercise", "add",
+		"--type", "strength",
+		"--calories", "250",
+		"--date", "2026-02-20",
+		"--time", "18:00",
+	)
+	if exit != 0 {
+		t.Fatalf("expected exercise add without distance to succeed: exit=%d stderr=%s", exit, stderr)
+	}
+}
+
 func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }

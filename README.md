@@ -1,16 +1,17 @@
 # kcal-cli
 
-`kcal` is a local-first calorie and macro tracking CLI built with Go, Cobra, and SQLite.
+`kcal` is a local-first calorie, macro, and micronutrient tracking CLI built with Go, Cobra, and SQLite.
 
 ## Features
 
-- Meal entry CRUD for calories and macros (protein, carbs, fat)
+- Meal entry CRUD for calories, macros, and richer nutrients (fiber, sugar, sodium, micronutrients)
 - Default + custom categories (`breakfast`, `lunch`, `dinner`, `snacks`, and custom like `supper`)
 - Goal versioning by effective date
 - Body tracking (weight + optional body-fat) with body-goal versioning
 - Recipe CRUD with serving-based logging
 - Ingredient-level recipe builder with recipe total recalculation
-- Weekly/monthly/custom-range analytics with adherence and category breakdown
+- Exercise log CRUD with burned calories and activity details
+- Weekly/monthly/custom-range analytics with intake/exercise/net calories and exercise-adjusted adherence targets
 
 ## Install
 
@@ -26,7 +27,7 @@ go build -o kcal .
 ./kcal body-goal set --target-weight 170 --unit lb --target-body-fat 18 --effective-date 2026-02-01
 ./kcal body add --weight 172 --unit lb --body-fat 20 --date 2026-02-20 --time 07:00
 ./kcal category add supper
-./kcal entry add --name "Chicken bowl" --calories 550 --protein 45 --carbs 40 --fat 18 --category supper
+./kcal entry add --name "Chicken bowl" --calories 550 --protein 45 --carbs 40 --fat 18 --fiber 6 --sugar 4 --sodium 580 --micros-json '{"vitamin_c":{"value":40,"unit":"mg"}}' --category supper
 ./kcal entry add --barcode 3017620422003 --provider openfoodfacts --servings 1.5 --category snacks
 ./kcal recipe add --name "Overnight oats" --calories 0 --protein 0 --carbs 0 --fat 0 --servings 2
 ./kcal recipe ingredient add "Overnight oats" --name Oats --amount 40 --unit g --calories 150 --protein 5 --carbs 27 --fat 3
@@ -35,6 +36,7 @@ go build -o kcal .
 ./kcal recipe ingredient add "Overnight oats" --name PeanutButter --amount 2 --unit tbsp --ref-amount 32 --ref-unit g --ref-calories 190 --ref-protein 7 --ref-carbs 8 --ref-fat 16 --density-g-per-ml 1.05
 ./kcal recipe recalc "Overnight oats"
 ./kcal recipe log "Overnight oats" --servings 1 --category breakfast
+./kcal exercise add --type running --calories 300 --duration-min 35 --date 2026-02-20 --time 18:30
 ./kcal analytics week
 ```
 
@@ -45,11 +47,12 @@ go build -o kcal .
 - `kcal entry add|list|update|delete`
   - `kcal entry show <id>`
   - `kcal entry metadata <id> --metadata-json '{...}'`
-  - `entry add` supports `--metadata-json '{...}'`
-  - `entry list` supports `--with-metadata`
+  - `entry add` supports `--metadata-json '{...}'`, `--fiber`, `--sugar`, `--sodium`, `--micros-json '{...}'`
+  - `entry list` supports `--with-metadata` and `--with-nutrients`
 - `kcal goal set|current|history`
 - `kcal body add|list|update|delete`
 - `kcal body-goal set|current|history`
+- `kcal exercise add|list|update|delete`
 - `kcal recipe add|list|show|update|delete|log|recalc`
 - `kcal recipe ingredient add|list|update|delete`
 - `kcal analytics week|month|range`
@@ -65,6 +68,12 @@ go build -o kcal .
 - `kcal import --format json|csv --in <file>`
 
 Use `--help` on any command for details.
+
+### Exercise-Adjusted Goal Logic
+
+- Exercise increases calorie allowance for the day (`effective_goal_calories = goal_calories + exercise_calories`).
+- Exercise also increases macro targets proportionally using the goal's calorie split (protein/carbs/fat by 4/4/9 kcal per gram).
+- Adherence uses net calories (`intake - exercise`) and exercise-adjusted macro targets.
 
 ## Barcode Lookup Providers
 
@@ -91,7 +100,7 @@ Rate limit note:
 
 Local correction workflow:
 ```bash
-./kcal lookup override set 3017620422003 --provider openfoodfacts --name "Nutella Custom" --brand Ferrero --serving-amount 15 --serving-unit g --calories 99 --protein 1 --carbs 10 --fat 6
+./kcal lookup override set 3017620422003 --provider openfoodfacts --name "Nutella Custom" --brand Ferrero --serving-amount 15 --serving-unit g --calories 99 --protein 1 --carbs 10 --fat 6 --fiber 0.5 --sugar 10 --sodium 15 --micros-json '{"vitamin_e":{"value":1.2,"unit":"mg"}}'
 ./kcal lookup barcode 3017620422003 --provider openfoodfacts
 ```
 Override resolution order is: local override -> cache -> live provider.

@@ -10,19 +10,23 @@ type Category struct {
 }
 
 type Entry struct {
-	ID         int64
-	Name       string
-	Calories   int
-	ProteinG   float64
-	CarbsG     float64
-	FatG       float64
-	CategoryID int64
-	Category   string
-	ConsumedAt time.Time
-	Notes      string
-	SourceType string
-	SourceID   *int64
-	Metadata   string
+	ID             int64
+	Name           string
+	Calories       int
+	ProteinG       float64
+	CarbsG         float64
+	FatG           float64
+	FiberG         float64
+	SugarG         float64
+	SodiumMg       float64
+	CategoryID     int64
+	Category       string
+	ConsumedAt     time.Time
+	Notes          string
+	SourceType     string
+	SourceID       *int64
+	Metadata       string
+	Micronutrients string
 }
 
 type Goal struct {
@@ -77,4 +81,18 @@ type RecipeIngredient struct {
 	FatG       float64
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
+}
+
+type ExerciseLog struct {
+	ID             int64
+	ExerciseType   string
+	CaloriesBurned int
+	DurationMin    *int
+	Distance       *float64
+	DistanceUnit   string
+	PerformedAt    time.Time
+	Notes          string
+	Metadata       string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }

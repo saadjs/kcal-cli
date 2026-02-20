@@ -95,11 +95,11 @@ func runAnalytics(cmd *cobra.Command, from, to time.Time) error {
 func printAnalyticsTable(cmd *cobra.Command, r *service.AnalyticsReport) {
 	out := cmd.OutOrStdout()
 	fmt.Fprintf(out, "Range: %s to %s\n", r.FromDate, r.ToDate)
-	fmt.Fprintf(out, "Totals: kcal=%d P=%.1f C=%.1f F=%.1f\n", r.TotalCalories, r.TotalProtein, r.TotalCarbs, r.TotalFat)
-	fmt.Fprintf(out, "Averages/day: kcal=%.1f P=%.1f C=%.1f F=%.1f\n", r.AverageCaloriesPerDay, r.AverageProteinPerDay, r.AverageCarbsPerDay, r.AverageFatPerDay)
+	fmt.Fprintf(out, "Totals: intake=%d exercise=%d net=%d P=%.1f C=%.1f F=%.1f\n", r.TotalIntakeCalories, r.TotalExerciseCalories, r.TotalNetCalories, r.TotalProtein, r.TotalCarbs, r.TotalFat)
+	fmt.Fprintf(out, "Averages/day: intake=%.1f exercise=%.1f net=%.1f P=%.1f C=%.1f F=%.1f\n", r.AverageIntakeCaloriesPerDay, r.AverageExerciseCaloriesPerDay, r.AverageNetCaloriesPerDay, r.AverageProteinPerDay, r.AverageCarbsPerDay, r.AverageFatPerDay)
 	if r.HighestDay != nil && r.LowestDay != nil {
-		fmt.Fprintf(out, "Highest day: %s (%d kcal)\n", r.HighestDay.Date, r.HighestDay.Calories)
-		fmt.Fprintf(out, "Lowest day: %s (%d kcal)\n", r.LowestDay.Date, r.LowestDay.Calories)
+		fmt.Fprintf(out, "Highest day: %s (net %d kcal)\n", r.HighestDay.Date, r.HighestDay.NetCalories)
+		fmt.Fprintf(out, "Lowest day: %s (net %d kcal)\n", r.LowestDay.Date, r.LowestDay.NetCalories)
 	}
 	fmt.Fprintf(out, "Adherence: %d/%d days within goals (%.1f%%), %d days without goal\n", r.Adherence.WithinGoalDays, r.Adherence.EvaluatedDays, r.Adherence.PercentWithin, r.Adherence.SkippedGoalDays)
 
