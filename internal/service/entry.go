@@ -36,6 +36,12 @@ type ListEntriesFilter struct {
 	Limit    int
 }
 
+type SearchEntriesFilter struct {
+	Query    string
+	Category string
+	Limit    int
+}
+
 type UpdateEntryInput struct {
 	ID             int64
 	Name           string
@@ -331,6 +337,86 @@ func DeleteEntry(db *sql.DB, id int64) error {
 		return fmt.Errorf("entry %d not found", id)
 	}
 	return nil
+}
+
+func SearchEntries(db *sql.DB, f SearchEntriesFilter) ([]model.Entry, error) {
+	q := strings.TrimSpace(f.Query)
+	if q == "" {
+		return nil, fmt.Errorf("search query is required")
+	}
+	query := `
+SELECT e.id, e.name, e.calories, e.protein_g, e.carbs_g, e.fat_g, e.fiber_g, e.sugar_g, e.sodium_mg, IFNULL(e.micronutrients_json, ''), e.category_id, c.name, e.consumed_at, IFNULL(e.notes, ''), e.source_type, e.source_id, IFNULL(e.metadata_json, '')
+FROM entries e
+JOIN categories c ON c.id = e.category_id
+WHERE (LOWER(e.name) LIKE ? OR LOWER(IFNULL(e.notes, '')) LIKE ?)`
+	args := []any{"%" + strings.ToLower(q) + "%", "%" + strings.ToLower(q) + "%"}
+	if strings.TrimSpace(f.Category) != "" {
+		query += ` AND c.name = ?`
+		args = append(args, normalizeName(f.Category))
+	}
+	query += ` ORDER BY e.consumed_at DESC`
+	if f.Limit <= 0 {
+		f.Limit = 20
+	}
+	query += ` LIMIT ?`
+	args = append(args, f.Limit)
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("search entries: %w", err)
+	}
+	defer rows.Close()
+
+	entries := make([]model.Entry, 0)
+	for rows.Next() {
+		var e model.Entry
+		var consumedAtRaw string
+		var sourceID sql.NullInt64
+		if err := rows.Scan(&e.ID, &e.Name, &e.Calories, &e.ProteinG, &e.CarbsG, &e.FatG, &e.FiberG, &e.SugarG, &e.SodiumMg, &e.Micronutrients, &e.CategoryID, &e.Category, &consumedAtRaw, &e.Notes, &e.SourceType, &sourceID, &e.Metadata); err != nil {
+			return nil, fmt.Errorf("scan search entry: %w", err)
+		}
+		consumedAt, err := time.Parse(time.RFC3339, consumedAtRaw)
+		if err != nil {
+			return nil, fmt.Errorf("parse consumed_at for entry %d: %w", e.ID, err)
+		}
+		e.ConsumedAt = consumedAt
+		if sourceID.Valid {
+			v := sourceID.Int64
+			e.SourceID = &v
+		}
+		entries = append(entries, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate search entries: %w", err)
+	}
+	return entries, nil
+}
+
+func RepeatEntry(db *sql.DB, id int64, consumed time.Time, categoryOverride string) (int64, error) {
+	original, err := EntryByID(db, id)
+	if err != nil {
+		return 0, err
+	}
+	category := original.Category
+	if strings.TrimSpace(categoryOverride) != "" {
+		category = categoryOverride
+	}
+	return CreateEntry(db, CreateEntryInput{
+		Name:           original.Name,
+		Calories:       original.Calories,
+		ProteinG:       original.ProteinG,
+		CarbsG:         original.CarbsG,
+		FatG:           original.FatG,
+		FiberG:         original.FiberG,
+		SugarG:         original.SugarG,
+		SodiumMg:       original.SodiumMg,
+		Micronutrients: original.Micronutrients,
+		Category:       category,
+		Consumed:       consumed,
+		Notes:          original.Notes,
+		SourceType:     original.SourceType,
+		SourceID:       original.SourceID,
+		Metadata:       original.Metadata,
+	})
 }
 
 func dayBounds(date string) (string, string, error) {

@@ -665,3 +665,126 @@ func TestBackupCreateAndRestore(t *testing.T) {
 		t.Fatalf("expected restored entry in db, got: %s", listOut)
 	}
 }
+
+func TestTodayWorkflowShowsRemaining(t *testing.T) {
+	binPath := buildKcalBinary(t)
+	dbPath := filepath.Join(t.TempDir(), "kcal.db")
+	initDB(t, binPath, dbPath)
+
+	_, stderr, exit := runKcal(t, binPath, dbPath, "goal", "set",
+		"--calories", "2200",
+		"--protein", "160",
+		"--carbs", "240",
+		"--fat", "70",
+		"--effective-date", "2026-02-20",
+	)
+	if exit != 0 {
+		t.Fatalf("goal set failed: exit=%d stderr=%s", exit, stderr)
+	}
+	_, stderr, exit = runKcal(t, binPath, dbPath, "entry", "add",
+		"--name", "Lunch",
+		"--calories", "700",
+		"--protein", "50",
+		"--carbs", "60",
+		"--fat", "20",
+		"--category", "lunch",
+		"--date", "2026-02-20",
+		"--time", "12:00",
+	)
+	if exit != 0 {
+		t.Fatalf("entry add failed: exit=%d stderr=%s", exit, stderr)
+	}
+	stdout, stderr, exit := runKcal(t, binPath, dbPath, "today", "--date", "2026-02-20")
+	if exit != 0 {
+		t.Fatalf("today failed: exit=%d stderr=%s", exit, stderr)
+	}
+	if !strings.Contains(stdout, "Remaining: 1500 kcal") {
+		t.Fatalf("expected remaining calories in today output, got: %s", stdout)
+	}
+}
+
+func TestEntryQuickSearchRepeat(t *testing.T) {
+	binPath := buildKcalBinary(t)
+	dbPath := filepath.Join(t.TempDir(), "kcal.db")
+	initDB(t, binPath, dbPath)
+
+	_, stderr, exit := runKcal(t, binPath, dbPath, "entry", "quick",
+		"Greek Yogurt | 220 20 18 8 | breakfast",
+		"--date", "2026-02-20",
+		"--time", "08:00",
+	)
+	if exit != 0 {
+		t.Fatalf("entry quick failed: exit=%d stderr=%s", exit, stderr)
+	}
+	searchOut, stderr, exit := runKcal(t, binPath, dbPath, "entry", "search", "--query", "yogurt")
+	if exit != 0 {
+		t.Fatalf("entry search failed: exit=%d stderr=%s", exit, stderr)
+	}
+	if !strings.Contains(strings.ToLower(searchOut), "greek yogurt") {
+		t.Fatalf("expected quick entry in search output, got: %s", searchOut)
+	}
+	_, stderr, exit = runKcal(t, binPath, dbPath, "entry", "repeat", "1", "--date", "2026-02-21", "--time", "08:10")
+	if exit != 0 {
+		t.Fatalf("entry repeat failed: exit=%d stderr=%s", exit, stderr)
+	}
+	listOut, stderr, exit := runKcal(t, binPath, dbPath, "entry", "list", "--from", "2026-02-20", "--to", "2026-02-21")
+	if exit != 0 {
+		t.Fatalf("entry list failed: exit=%d stderr=%s", exit, stderr)
+	}
+	if strings.Count(strings.ToLower(listOut), "greek yogurt") != 2 {
+		t.Fatalf("expected repeated entry in list output, got: %s", listOut)
+	}
+}
+
+func TestGoalSuggestApply(t *testing.T) {
+	binPath := buildKcalBinary(t)
+	dbPath := filepath.Join(t.TempDir(), "kcal.db")
+	initDB(t, binPath, dbPath)
+
+	stdout, stderr, exit := runKcal(t, binPath, dbPath, "goal", "suggest",
+		"--weight", "80",
+		"--unit", "kg",
+		"--maintenance-calories", "2500",
+		"--pace", "cut",
+		"--apply",
+		"--effective-date", "2026-02-20",
+	)
+	if exit != 0 {
+		t.Fatalf("goal suggest failed: exit=%d stderr=%s", exit, stderr)
+	}
+	if !strings.Contains(stdout, "Applied suggested goal effective 2026-02-20") {
+		t.Fatalf("expected apply confirmation, got: %s", stdout)
+	}
+	currentOut, stderr, exit := runKcal(t, binPath, dbPath, "goal", "current", "--date", "2026-02-20")
+	if exit != 0 {
+		t.Fatalf("goal current failed: exit=%d stderr=%s", exit, stderr)
+	}
+	if !strings.Contains(currentOut, "Calories: 2000") {
+		t.Fatalf("expected cut calories target, got: %s", currentOut)
+	}
+}
+
+func TestDoctorDetectsSuspiciousEntry(t *testing.T) {
+	binPath := buildKcalBinary(t)
+	dbPath := filepath.Join(t.TempDir(), "kcal.db")
+	initDB(t, binPath, dbPath)
+
+	_, stderr, exit := runKcal(t, binPath, dbPath, "entry", "add",
+		"--name", "Impossible",
+		"--calories", "100",
+		"--protein", "100",
+		"--carbs", "100",
+		"--fat", "100",
+		"--category", "lunch",
+	)
+	if exit != 0 {
+		t.Fatalf("entry add failed: exit=%d stderr=%s", exit, stderr)
+	}
+	stdout, stderr, exit := runKcal(t, binPath, dbPath, "doctor")
+	if exit == 0 {
+		t.Fatalf("expected doctor to fail with suspicious entry")
+	}
+	if !strings.Contains(stdout, "Suspicious entries: 1") {
+		t.Fatalf("expected suspicious count in doctor output, got stdout=%s stderr=%s", stdout, stderr)
+	}
+}
