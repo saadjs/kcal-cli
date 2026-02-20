@@ -14,16 +14,27 @@ import (
 const defaultBaseURL = "https://api.upcitemdb.com"
 
 type FoodLookup struct {
-	Description   string
-	Brand         string
-	ServingAmount float64
-	ServingUnit   string
-	Calories      float64
-	ProteinG      float64
-	CarbsG        float64
-	FatG          float64
-	SourceID      int64
+	Description    string
+	Brand          string
+	ServingAmount  float64
+	ServingUnit    string
+	Calories       float64
+	ProteinG       float64
+	CarbsG         float64
+	FatG           float64
+	FiberG         float64
+	SugarG         float64
+	SodiumMg       float64
+	Micronutrients Micronutrients
+	SourceID       int64
 }
+
+type MicronutrientAmount struct {
+	Value float64 `json:"value"`
+	Unit  string  `json:"unit"`
+}
+
+type Micronutrients map[string]MicronutrientAmount
 
 type Client struct {
 	BaseURL    string
@@ -82,21 +93,32 @@ func (c *Client) LookupBarcode(ctx context.Context, barcode string) (FoodLookup,
 	}
 	item := parsed.Items[0]
 	amount, unit := parseServing(item.Size)
-	calories := parseNutrient(item.NutritionFacts, "calories")
-	protein := parseNutrient(item.NutritionFacts, "protein")
-	carbs := parseNutrient(item.NutritionFacts, "carbohydrate")
-	fat := parseNutrient(item.NutritionFacts, "fat")
+	calories, _ := parseNutrient(item.NutritionFacts, "calories")
+	protein, _ := parseNutrient(item.NutritionFacts, "protein")
+	carbs, _ := parseNutrient(item.NutritionFacts, "carbohydrate")
+	fat, _ := parseNutrient(item.NutritionFacts, "fat")
+	fiber, _ := parseNutrient(item.NutritionFacts, "fiber")
+	sugar, _ := parseNutrient(item.NutritionFacts, "sugar")
+	sodium, sodiumUnit := parseNutrient(item.NutritionFacts, "sodium")
+	if strings.ToLower(sodiumUnit) == "g" {
+		sodium *= 1000
+	}
+	micros := parseMicronutrients(item.NutritionFacts)
 
 	return FoodLookup{
-		Description:   strings.TrimSpace(item.Title),
-		Brand:         strings.TrimSpace(item.Brand),
-		ServingAmount: amount,
-		ServingUnit:   unit,
-		Calories:      calories,
-		ProteinG:      protein,
-		CarbsG:        carbs,
-		FatG:          fat,
-		SourceID:      0,
+		Description:    strings.TrimSpace(item.Title),
+		Brand:          strings.TrimSpace(item.Brand),
+		ServingAmount:  amount,
+		ServingUnit:    unit,
+		Calories:       calories,
+		ProteinG:       protein,
+		CarbsG:         carbs,
+		FatG:           fat,
+		FiberG:         fiber,
+		SugarG:         sugar,
+		SodiumMg:       sodium,
+		Micronutrients: micros,
+		SourceID:       0,
 	}, body, nil
 }
 
@@ -114,22 +136,66 @@ func parseServing(size string) (float64, string) {
 	return 100, "g"
 }
 
-func parseNutrient(n map[string]any, keyContains string) float64 {
+func parseNutrient(n map[string]any, keyContains string) (float64, string) {
 	for k, v := range n {
 		if strings.Contains(strings.ToLower(k), keyContains) {
-			s := fmt.Sprintf("%v", v)
-			var filtered strings.Builder
-			for _, r := range s {
-				if (r >= '0' && r <= '9') || r == '.' {
-					filtered.WriteRune(r)
-				}
-			}
-			if f, err := strconv.ParseFloat(filtered.String(), 64); err == nil {
-				return f
+			if amount, ok := parseNutrientAmount(fmt.Sprintf("%v", v)); ok {
+				return amount.Value, amount.Unit
 			}
 		}
 	}
-	return 0
+	return 0, ""
+}
+
+func parseNutrientAmount(raw string) (MicronutrientAmount, bool) {
+	raw = strings.ToLower(strings.TrimSpace(raw))
+	if raw == "" {
+		return MicronutrientAmount{}, false
+	}
+	var filtered strings.Builder
+	for _, r := range raw {
+		if (r >= '0' && r <= '9') || r == '.' {
+			filtered.WriteRune(r)
+		}
+	}
+	value, err := strconv.ParseFloat(filtered.String(), 64)
+	if err != nil {
+		return MicronutrientAmount{}, false
+	}
+	unit := "g"
+	switch {
+	case strings.Contains(raw, "mg"):
+		unit = "mg"
+	case strings.Contains(raw, "ug"), strings.Contains(raw, "mcg"):
+		unit = "ug"
+	case strings.Contains(raw, "iu"):
+		unit = "iu"
+	case strings.Contains(raw, "g"):
+		unit = "g"
+	}
+	return MicronutrientAmount{Value: value, Unit: unit}, true
+}
+
+func parseMicronutrients(n map[string]any) Micronutrients {
+	out := Micronutrients{}
+	for k, v := range n {
+		key := strings.ToLower(strings.TrimSpace(k))
+		if strings.Contains(key, "calorie") || strings.Contains(key, "protein") || strings.Contains(key, "carbohydrate") ||
+			strings.Contains(key, "fat") || strings.Contains(key, "fiber") || strings.Contains(key, "sugar") || strings.Contains(key, "sodium") {
+			continue
+		}
+		if !strings.Contains(key, "vitamin") && !strings.Contains(key, "iron") && !strings.Contains(key, "calcium") &&
+			!strings.Contains(key, "potassium") && !strings.Contains(key, "zinc") && !strings.Contains(key, "magnesium") {
+			continue
+		}
+		amount, ok := parseNutrientAmount(fmt.Sprintf("%v", v))
+		if !ok {
+			continue
+		}
+		canonical := strings.ReplaceAll(strings.ReplaceAll(key, " ", "_"), "-", "_")
+		out[canonical] = amount
+	}
+	return out
 }
 
 type response struct {

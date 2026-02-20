@@ -45,6 +45,10 @@ var (
 	overrideP           float64
 	overrideC           float64
 	overrideF           float64
+	overrideFiber       float64
+	overrideSugar       float64
+	overrideSodium      float64
+	overrideMicros      string
 	overrideNotes       string
 	overrideLimit       int
 	cacheLimit          int
@@ -82,7 +86,7 @@ var lookupBarcodeCmd = &cobra.Command{
 			fmt.Fprintf(cmd.OutOrStdout(), "Food: %s\n", result.Description)
 			fmt.Fprintf(cmd.OutOrStdout(), "Brand: %s\n", result.Brand)
 			fmt.Fprintf(cmd.OutOrStdout(), "Serving: %.2f %s\n", result.ServingAmount, result.ServingUnit)
-			fmt.Fprintf(cmd.OutOrStdout(), "Calories: %.1f\nProtein: %.1fg\nCarbs: %.1fg\nFat: %.1fg\n", result.Calories, result.ProteinG, result.CarbsG, result.FatG)
+			fmt.Fprintf(cmd.OutOrStdout(), "Calories: %.1f\nProtein: %.1fg\nCarbs: %.1fg\nFat: %.1fg\nFiber: %.1fg\nSugar: %.1fg\nSodium: %.1fmg\nMicronutrients: %s\n", result.Calories, result.ProteinG, result.CarbsG, result.FatG, result.FiberG, result.SugarG, result.SodiumMg, formatLookupMicronutrients(result.Micronutrients))
 			fmt.Fprintf(cmd.OutOrStdout(), "Confidence: %.2f (%s)\n", result.ProviderConfidence, result.NutritionCompleteness)
 			if len(result.LookupTrail) > 0 {
 				fmt.Fprintf(cmd.OutOrStdout(), "Lookup trail: %s\n", strings.Join(result.LookupTrail, " -> "))
@@ -174,15 +178,19 @@ var lookupOverrideSetCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		provider := resolveBarcodeProvider(lookupProvider)
 		in := service.BarcodeOverrideInput{
-			Description:   overrideName,
-			Brand:         overrideBrand,
-			ServingAmount: overrideAmount,
-			ServingUnit:   overrideUnit,
-			Calories:      overrideKcal,
-			ProteinG:      overrideP,
-			CarbsG:        overrideC,
-			FatG:          overrideF,
-			Notes:         overrideNotes,
+			Description:    overrideName,
+			Brand:          overrideBrand,
+			ServingAmount:  overrideAmount,
+			ServingUnit:    overrideUnit,
+			Calories:       overrideKcal,
+			ProteinG:       overrideP,
+			CarbsG:         overrideC,
+			FatG:           overrideF,
+			FiberG:         overrideFiber,
+			SugarG:         overrideSugar,
+			SodiumMg:       overrideSodium,
+			Micronutrients: overrideMicros,
+			Notes:          overrideNotes,
 		}
 		return withDB(func(sqldb *sql.DB) error {
 			if err := service.SetBarcodeOverride(sqldb, provider, args[0], in); err != nil {
@@ -216,7 +224,7 @@ var lookupOverrideShowCmd = &cobra.Command{
 				fmt.Fprintln(cmd.OutOrStdout(), string(b))
 				return nil
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Provider: %s\nBarcode: %s\nFood: %s\nBrand: %s\nServing: %.2f %s\nCalories: %.1f\nProtein: %.1fg\nCarbs: %.1fg\nFat: %.1fg\n", result.Provider, result.Barcode, result.Description, result.Brand, result.ServingAmount, result.ServingUnit, result.Calories, result.ProteinG, result.CarbsG, result.FatG)
+			fmt.Fprintf(cmd.OutOrStdout(), "Provider: %s\nBarcode: %s\nFood: %s\nBrand: %s\nServing: %.2f %s\nCalories: %.1f\nProtein: %.1fg\nCarbs: %.1fg\nFat: %.1fg\nFiber: %.1fg\nSugar: %.1fg\nSodium: %.1fmg\nMicronutrients: %s\n", result.Provider, result.Barcode, result.Description, result.Brand, result.ServingAmount, result.ServingUnit, result.Calories, result.ProteinG, result.CarbsG, result.FatG, result.FiberG, result.SugarG, result.SodiumMg, formatLookupMicronutrients(result.Micronutrients))
 			return nil
 		})
 	},
@@ -259,9 +267,9 @@ var lookupOverrideListCmd = &cobra.Command{
 				fmt.Fprintln(cmd.OutOrStdout(), string(b))
 				return nil
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), "PROVIDER\tBARCODE\tNAME\tKCAL\tP\tC\tF")
+			fmt.Fprintln(cmd.OutOrStdout(), "PROVIDER\tBARCODE\tNAME\tKCAL\tP\tC\tF\tFIBER_G\tSUGAR_G\tSODIUM_MG\tMICRONUTRIENTS")
 			for _, it := range items {
-				fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\t%s\t%.1f\t%.1f\t%.1f\t%.1f\n", it.Provider, it.Barcode, it.Description, it.Calories, it.ProteinG, it.CarbsG, it.FatG)
+				fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\t%s\t%.1f\t%.1f\t%.1f\t%.1f\t%.1f\t%.1f\t%.1f\t%s\n", it.Provider, it.Barcode, it.Description, it.Calories, it.ProteinG, it.CarbsG, it.FatG, it.FiberG, it.SugarG, it.SodiumMg, formatLookupMicronutrients(it.Micronutrients))
 			}
 			return nil
 		})
@@ -544,6 +552,17 @@ func normalizeProviderToken(p string) string {
 	}
 }
 
+func formatLookupMicronutrients(m service.Micronutrients) string {
+	if len(m) == 0 {
+		return "-"
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		return "-"
+	}
+	return string(b)
+}
+
 var lookupOpenFoodFactsHelpCmd = &cobra.Command{
 	Use:   "openfoodfacts-help",
 	Short: "Show setup and usage guidance for Open Food Facts provider",
@@ -587,6 +606,10 @@ func init() {
 	lookupOverrideSetCmd.Flags().Float64Var(&overrideP, "protein", 0, "Protein grams")
 	lookupOverrideSetCmd.Flags().Float64Var(&overrideC, "carbs", 0, "Carbs grams")
 	lookupOverrideSetCmd.Flags().Float64Var(&overrideF, "fat", 0, "Fat grams")
+	lookupOverrideSetCmd.Flags().Float64Var(&overrideFiber, "fiber", 0, "Fiber grams")
+	lookupOverrideSetCmd.Flags().Float64Var(&overrideSugar, "sugar", 0, "Sugar grams")
+	lookupOverrideSetCmd.Flags().Float64Var(&overrideSodium, "sodium", 0, "Sodium milligrams")
+	lookupOverrideSetCmd.Flags().StringVar(&overrideMicros, "micros-json", "", "Micronutrients JSON object")
 	lookupOverrideSetCmd.Flags().StringVar(&overrideNotes, "notes", "", "Override notes")
 	_ = lookupOverrideSetCmd.MarkFlagRequired("name")
 	_ = lookupOverrideSetCmd.MarkFlagRequired("serving-amount")
@@ -595,7 +618,6 @@ func init() {
 	_ = lookupOverrideSetCmd.MarkFlagRequired("protein")
 	_ = lookupOverrideSetCmd.MarkFlagRequired("carbs")
 	_ = lookupOverrideSetCmd.MarkFlagRequired("fat")
-
 	lookupOverrideListCmd.Flags().IntVar(&overrideLimit, "limit", 100, "Max overrides to return")
 	lookupCacheListCmd.Flags().StringVar(&lookupProvider, "provider", "", "Filter by provider")
 	lookupCacheListCmd.Flags().IntVar(&cacheLimit, "limit", 100, "Max cached rows to return")

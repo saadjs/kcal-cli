@@ -22,10 +22,14 @@ func TestLookupBarcodeParsesUSDAResponse(t *testing.T) {
       "servingSize": 170,
       "servingSizeUnit": "g",
       "foodNutrients": [
-        {"nutrientName": "Energy", "value": 100},
-        {"nutrientName": "Protein", "value": 17},
-        {"nutrientName": "Carbohydrate, by difference", "value": 6},
-        {"nutrientName": "Total lipid (fat)", "value": 0}
+        {"nutrientName": "Energy", "unitName": "KCAL", "value": 100},
+        {"nutrientName": "Protein", "unitName": "G", "value": 17},
+        {"nutrientName": "Carbohydrate, by difference", "unitName": "G", "value": 6},
+        {"nutrientName": "Total lipid (fat)", "unitName": "G", "value": 0},
+        {"nutrientName": "Fiber, total dietary", "unitName": "G", "value": 1.2},
+        {"nutrientName": "Sugars, total including NLEA", "unitName": "G", "value": 4.1},
+        {"nutrientName": "Sodium, Na", "unitName": "MG", "value": 55},
+        {"nutrientName": "Vitamin C, total ascorbic acid", "unitName": "MG", "value": 6}
       ]
     }
   ]
@@ -48,5 +52,11 @@ func TestLookupBarcodeParsesUSDAResponse(t *testing.T) {
 	}
 	if item.Calories != 100 || item.ProteinG != 17 || item.CarbsG != 6 || item.FatG != 0 {
 		t.Fatalf("unexpected nutrients: %+v", item)
+	}
+	if item.FiberG != 1.2 || item.SugarG != 4.1 || item.SodiumMg != 55 {
+		t.Fatalf("unexpected extended nutrients: %+v", item)
+	}
+	if _, ok := item.Micronutrients["vitamin_c_total_ascorbic_acid"]; !ok {
+		t.Fatalf("expected vitamin c micronutrient in %+v", item.Micronutrients)
 	}
 }

@@ -14,17 +14,28 @@ import (
 const defaultBaseURL = "https://api.nal.usda.gov"
 
 type FoodLookup struct {
-	Barcode       string  `json:"barcode"`
-	Description   string  `json:"description"`
-	Brand         string  `json:"brand"`
-	ServingAmount float64 `json:"serving_amount"`
-	ServingUnit   string  `json:"serving_unit"`
-	Calories      float64 `json:"calories"`
-	ProteinG      float64 `json:"protein_g"`
-	CarbsG        float64 `json:"carbs_g"`
-	FatG          float64 `json:"fat_g"`
-	FDCID         int64   `json:"fdc_id"`
+	Barcode        string         `json:"barcode"`
+	Description    string         `json:"description"`
+	Brand          string         `json:"brand"`
+	ServingAmount  float64        `json:"serving_amount"`
+	ServingUnit    string         `json:"serving_unit"`
+	Calories       float64        `json:"calories"`
+	ProteinG       float64        `json:"protein_g"`
+	CarbsG         float64        `json:"carbs_g"`
+	FatG           float64        `json:"fat_g"`
+	FiberG         float64        `json:"fiber_g"`
+	SugarG         float64        `json:"sugar_g"`
+	SodiumMg       float64        `json:"sodium_mg"`
+	Micronutrients Micronutrients `json:"micronutrients,omitempty"`
+	FDCID          int64          `json:"fdc_id"`
 }
+
+type MicronutrientAmount struct {
+	Value float64 `json:"value"`
+	Unit  string  `json:"unit"`
+}
+
+type Micronutrients map[string]MicronutrientAmount
 
 type Client struct {
 	APIKey     string
@@ -87,15 +98,17 @@ func (c *Client) LookupBarcode(ctx context.Context, barcode string) (FoodLookup,
 	}
 
 	out := FoodLookup{
-		Barcode:       barcode,
-		Description:   strings.TrimSpace(food.Description),
-		Brand:         strings.TrimSpace(food.BrandOwner),
-		ServingAmount: food.ServingSize,
-		ServingUnit:   strings.TrimSpace(food.ServingSizeUnit),
-		FDCID:         food.FDCID,
+		Barcode:        barcode,
+		Description:    strings.TrimSpace(food.Description),
+		Brand:          strings.TrimSpace(food.BrandOwner),
+		ServingAmount:  food.ServingSize,
+		ServingUnit:    strings.TrimSpace(food.ServingSizeUnit),
+		FDCID:          food.FDCID,
+		Micronutrients: Micronutrients{},
 	}
 	for _, n := range food.FoodNutrients {
-		switch strings.ToLower(strings.TrimSpace(n.NutrientName)) {
+		name := strings.ToLower(strings.TrimSpace(n.NutrientName))
+		switch name {
 		case "energy":
 			out.Calories = n.Value
 		case "protein":
@@ -104,6 +117,16 @@ func (c *Client) LookupBarcode(ctx context.Context, barcode string) (FoodLookup,
 			out.CarbsG = n.Value
 		case "total lipid (fat)":
 			out.FatG = n.Value
+		case "fiber, total dietary":
+			out.FiberG = n.Value
+		case "sugars, total including nlea", "sugars, total":
+			out.SugarG = n.Value
+		case "sodium, na":
+			out.SodiumMg = n.Value
+		default:
+			if key, unit, ok := normalizeUSDAMicronutrient(n.NutrientName, n.UnitName); ok {
+				out.Micronutrients[key] = MicronutrientAmount{Value: n.Value, Unit: unit}
+			}
 		}
 	}
 
@@ -138,5 +161,39 @@ type usdaFood struct {
 
 type usdaNutrient struct {
 	NutrientName string  `json:"nutrientName"`
+	UnitName     string  `json:"unitName"`
 	Value        float64 `json:"value"`
+}
+
+func normalizeUSDAMicronutrient(name, unit string) (string, string, bool) {
+	lower := strings.ToLower(strings.TrimSpace(name))
+	if lower == "" {
+		return "", "", false
+	}
+	isVitamin := strings.Contains(lower, "vitamin")
+	isMineral := strings.Contains(lower, "iron") ||
+		strings.Contains(lower, "calcium") ||
+		strings.Contains(lower, "potassium") ||
+		strings.Contains(lower, "zinc") ||
+		strings.Contains(lower, "magnesium") ||
+		strings.Contains(lower, "phosphorus") ||
+		strings.Contains(lower, "selenium") ||
+		strings.Contains(lower, "copper") ||
+		strings.Contains(lower, "manganese")
+	if !isVitamin && !isMineral {
+		return "", "", false
+	}
+	clean := strings.NewReplacer(",", "", "(", "", ")", "", "-", "_", " ", "_").Replace(lower)
+	for strings.Contains(clean, "__") {
+		clean = strings.ReplaceAll(clean, "__", "_")
+	}
+	clean = strings.Trim(clean, "_")
+	if clean == "" {
+		return "", "", false
+	}
+	unit = strings.ToLower(strings.TrimSpace(unit))
+	if unit == "" {
+		return "", "", false
+	}
+	return clean, unit, true
 }

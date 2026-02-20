@@ -23,7 +23,11 @@ func TestLookupBarcodeParsesOpenFoodFactsResponse(t *testing.T) {
       "energy-kcal_serving": 120,
       "proteins_serving": 10,
       "carbohydrates_serving": 15,
-      "fat_serving": 2
+      "fat_serving": 2,
+      "fiber_serving": 1.8,
+      "sugars_serving": 12,
+      "sodium_serving": 0.09,
+      "vitamin-c_serving": 25
     }
   }
 }`))
@@ -37,5 +41,11 @@ func TestLookupBarcodeParsesOpenFoodFactsResponse(t *testing.T) {
 	}
 	if item.Description != "Yogurt Cup" || item.Calories != 120 || item.ProteinG != 10 {
 		t.Fatalf("unexpected parsed item: %+v", item)
+	}
+	if item.FiberG != 1.8 || item.SugarG != 12 || item.SodiumMg != 90 {
+		t.Fatalf("unexpected extended nutrients: %+v", item)
+	}
+	if _, ok := item.Micronutrients["vitamin_c"]; !ok {
+		t.Fatalf("expected micronutrient vitamin_c, got %+v", item.Micronutrients)
 	}
 }

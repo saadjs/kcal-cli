@@ -192,7 +192,7 @@ func TestDeriveNutritionCompleteness(t *testing.T) {
 	if got := deriveNutritionCompleteness(BarcodeLookupResult{Description: "Food"}); got != "partial" {
 		t.Fatalf("expected partial completeness, got %q", got)
 	}
-	if got := deriveNutritionCompleteness(BarcodeLookupResult{Description: "Food", ServingAmount: 10, ServingUnit: "g"}); got != "complete" {
+	if got := deriveNutritionCompleteness(BarcodeLookupResult{Description: "Food", ServingAmount: 10, ServingUnit: "g", ProteinG: 1}); got != "complete" {
 		t.Fatalf("expected complete completeness, got %q", got)
 	}
 }

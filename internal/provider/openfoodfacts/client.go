@@ -14,16 +14,27 @@ import (
 const defaultBaseURL = "https://world.openfoodfacts.org"
 
 type FoodLookup struct {
-	Description   string
-	Brand         string
-	ServingAmount float64
-	ServingUnit   string
-	Calories      float64
-	ProteinG      float64
-	CarbsG        float64
-	FatG          float64
-	SourceID      int64
+	Description    string
+	Brand          string
+	ServingAmount  float64
+	ServingUnit    string
+	Calories       float64
+	ProteinG       float64
+	CarbsG         float64
+	FatG           float64
+	FiberG         float64
+	SugarG         float64
+	SodiumMg       float64
+	Micronutrients Micronutrients
+	SourceID       int64
 }
+
+type MicronutrientAmount struct {
+	Value float64 `json:"value"`
+	Unit  string  `json:"unit"`
+}
+
+type Micronutrients map[string]MicronutrientAmount
 
 type Client struct {
 	BaseURL    string
@@ -69,29 +80,104 @@ func (c *Client) LookupBarcode(ctx context.Context, barcode string) (FoodLookup,
 	}
 
 	servingAmount, servingUnit := parseServing(parsed.Product)
-	calories := firstNonZero(parsed.Product.Nutriments.EnergyKcalServing, parsed.Product.Nutriments.EnergyKcal100g)
-	protein := firstNonZero(parsed.Product.Nutriments.ProteinServing, parsed.Product.Nutriments.Protein100g)
-	carbs := firstNonZero(parsed.Product.Nutriments.CarbsServing, parsed.Product.Nutriments.Carbs100g)
-	fat := firstNonZero(parsed.Product.Nutriments.FatServing, parsed.Product.Nutriments.Fat100g)
+	calories := nutrientValue(parsed.Product.Nutriments, "energy-kcal")
+	protein := nutrientValue(parsed.Product.Nutriments, "proteins")
+	carbs := nutrientValue(parsed.Product.Nutriments, "carbohydrates")
+	fat := nutrientValue(parsed.Product.Nutriments, "fat")
+	fiber := nutrientValue(parsed.Product.Nutriments, "fiber")
+	sugar := nutrientValue(parsed.Product.Nutriments, "sugars")
+	sodium := nutrientValue(parsed.Product.Nutriments, "sodium") * 1000
+	micros := parseMicronutrients(parsed.Product.Nutriments)
 
 	return FoodLookup{
-		Description:   strings.TrimSpace(parsed.Product.ProductName),
-		Brand:         strings.TrimSpace(parsed.Product.Brands),
-		ServingAmount: servingAmount,
-		ServingUnit:   servingUnit,
-		Calories:      calories,
-		ProteinG:      protein,
-		CarbsG:        carbs,
-		FatG:          fat,
-		SourceID:      0,
+		Description:    strings.TrimSpace(parsed.Product.ProductName),
+		Brand:          strings.TrimSpace(parsed.Product.Brands),
+		ServingAmount:  servingAmount,
+		ServingUnit:    servingUnit,
+		Calories:       calories,
+		ProteinG:       protein,
+		CarbsG:         carbs,
+		FatG:           fat,
+		FiberG:         fiber,
+		SugarG:         sugar,
+		SodiumMg:       sodium,
+		Micronutrients: micros,
+		SourceID:       0,
 	}, body, nil
 }
 
-func firstNonZero(a, b float64) float64 {
-	if a != 0 {
-		return a
+func nutrientValue(n map[string]any, base string) float64 {
+	for _, key := range []string{base + "_serving", base + "_100g"} {
+		if v, ok := parseFloatAny(n[key]); ok {
+			return v
+		}
 	}
-	return b
+	return 0
+}
+
+func parseFloatAny(v any) (float64, bool) {
+	switch t := v.(type) {
+	case float64:
+		return t, true
+	case float32:
+		return float64(t), true
+	case int:
+		return float64(t), true
+	case int64:
+		return float64(t), true
+	case json.Number:
+		f, err := t.Float64()
+		return f, err == nil
+	case string:
+		f, err := strconv.ParseFloat(strings.TrimSpace(t), 64)
+		return f, err == nil
+	default:
+		return 0, false
+	}
+}
+
+func parseMicronutrients(n map[string]any) Micronutrients {
+	out := Micronutrients{}
+	for key, raw := range n {
+		if !strings.HasSuffix(key, "_serving") && !strings.HasSuffix(key, "_100g") {
+			continue
+		}
+		base := strings.TrimSuffix(strings.TrimSuffix(strings.ToLower(key), "_serving"), "_100g")
+		if base == "energy-kcal" || base == "proteins" || base == "carbohydrates" || base == "fat" || base == "fiber" || base == "sugars" || base == "sodium" {
+			continue
+		}
+		if !strings.Contains(base, "vitamin") && !strings.Contains(base, "iron") && !strings.Contains(base, "calcium") &&
+			!strings.Contains(base, "potassium") && !strings.Contains(base, "magnesium") && !strings.Contains(base, "zinc") &&
+			!strings.Contains(base, "phosphorus") && !strings.Contains(base, "selenium") && !strings.Contains(base, "copper") {
+			continue
+		}
+		value, ok := parseFloatAny(raw)
+		if !ok {
+			continue
+		}
+		unit := micronutrientUnit(base)
+		if unit == "" {
+			continue
+		}
+		canonical := strings.ReplaceAll(base, "-", "_")
+		out[canonical] = MicronutrientAmount{Value: value, Unit: unit}
+	}
+	return out
+}
+
+func micronutrientUnit(base string) string {
+	switch {
+	case strings.Contains(base, "vitamin-a"), strings.Contains(base, "vitamin-d"):
+		return "ug"
+	case strings.Contains(base, "vitamin-b12"), strings.Contains(base, "selenium"):
+		return "ug"
+	case strings.Contains(base, "sodium"), strings.Contains(base, "iron"), strings.Contains(base, "calcium"),
+		strings.Contains(base, "potassium"), strings.Contains(base, "magnesium"), strings.Contains(base, "zinc"),
+		strings.Contains(base, "phosphorus"), strings.Contains(base, "copper"), strings.Contains(base, "vitamin-c"):
+		return "mg"
+	default:
+		return "mg"
+	}
 }
 
 func parseServing(p offProduct) (float64, string) {
@@ -119,21 +205,10 @@ type offResponse struct {
 }
 
 type offProduct struct {
-	ProductName         string        `json:"product_name"`
-	Brands              string        `json:"brands"`
-	ServingSize         string        `json:"serving_size"`
-	ServingQuantity     float64       `json:"serving_quantity"`
-	ServingQuantityUnit string        `json:"serving_quantity_unit"`
-	Nutriments          offNutriments `json:"nutriments"`
-}
-
-type offNutriments struct {
-	EnergyKcalServing float64 `json:"energy-kcal_serving"`
-	EnergyKcal100g    float64 `json:"energy-kcal_100g"`
-	ProteinServing    float64 `json:"proteins_serving"`
-	Protein100g       float64 `json:"proteins_100g"`
-	CarbsServing      float64 `json:"carbohydrates_serving"`
-	Carbs100g         float64 `json:"carbohydrates_100g"`
-	FatServing        float64 `json:"fat_serving"`
-	Fat100g           float64 `json:"fat_100g"`
+	ProductName         string         `json:"product_name"`
+	Brands              string         `json:"brands"`
+	ServingSize         string         `json:"serving_size"`
+	ServingQuantity     float64        `json:"serving_quantity"`
+	ServingQuantityUnit string         `json:"serving_quantity_unit"`
+	Nutriments          map[string]any `json:"nutriments"`
 }
