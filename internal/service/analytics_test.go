@@ -112,4 +112,7 @@ func TestAnalyticsRangeTotalsAndAdherence(t *testing.T) {
 	if report.Body.GoalProgress == nil {
 		t.Fatalf("expected goal progress in body summary")
 	}
+	if report.Metadata.SourceCounts["manual"] != 3 {
+		t.Fatalf("expected metadata source count for manual=3, got %+v", report.Metadata.SourceCounts)
+	}
 }

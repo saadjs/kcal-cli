@@ -43,6 +43,8 @@ go build -o kcal .
 - `kcal init`
 - `kcal category add|list|rename|delete`
 - `kcal entry add|list|update|delete`
+  - `kcal entry show <id>`
+  - `kcal entry metadata <id> --metadata-json '{...}'`
   - `entry add` supports `--metadata-json '{...}'`
   - `entry list` supports `--with-metadata`
 - `kcal goal set|current|history`
@@ -57,6 +59,10 @@ go build -o kcal .
 - `kcal lookup openfoodfacts-help`
 - `kcal lookup upcitemdb-help`
 - `kcal lookup override set|show|list|delete ...`
+- `kcal lookup cache list|purge|refresh ...`
+- `kcal config set|get`
+- `kcal export --format json|csv --out <file>`
+- `kcal import --format json|csv --in <file>`
 
 Use `--help` on any command for details.
 

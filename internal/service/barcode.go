@@ -63,6 +63,14 @@ type BarcodeLookupCandidate struct {
 	Options  BarcodeLookupOptions
 }
 
+type BarcodeCacheItem struct {
+	Provider    string    `json:"provider"`
+	Barcode     string    `json:"barcode"`
+	Description string    `json:"description"`
+	Brand       string    `json:"brand"`
+	ExpiresAt   time.Time `json:"expires_at"`
+}
+
 type barcodeClient interface {
 	LookupBarcode(ctx context.Context, barcode string) (BarcodeLookupResult, []byte, error)
 }
@@ -87,6 +95,111 @@ func LookupBarcode(db *sql.DB, provider, barcode string, options BarcodeLookupOp
 	default:
 		return BarcodeLookupResult{}, fmt.Errorf("unsupported barcode provider %q", provider)
 	}
+}
+
+func RefreshBarcodeCache(db *sql.DB, provider, barcode string, options BarcodeLookupOptions) (BarcodeLookupResult, error) {
+	provider = normalizeBarcodeProvider(provider)
+	barcode = strings.TrimSpace(barcode)
+	if provider == "" {
+		return BarcodeLookupResult{}, fmt.Errorf("provider is required")
+	}
+	if !isValidBarcode(barcode) {
+		return BarcodeLookupResult{}, fmt.Errorf("invalid barcode %q (expected 8-14 digits)", barcode)
+	}
+
+	if _, err := db.Exec(`DELETE FROM barcode_cache WHERE provider = ? AND barcode = ?`, provider, barcode); err != nil {
+		return BarcodeLookupResult{}, fmt.Errorf("delete barcode cache row: %w", err)
+	}
+	var client barcodeClient
+	switch provider {
+	case BarcodeProviderUSDA:
+		client = &usdaClientAdapter{client: &usda.Client{APIKey: options.APIKey}}
+	case BarcodeProviderOpenFoodFacts:
+		client = &openFoodFactsClientAdapter{client: &openfoodfacts.Client{}}
+	case BarcodeProviderUPCItemDB:
+		client = &upcItemDBClientAdapter{client: &upcitemdb.Client{APIKey: options.APIKey, APIKeyType: options.APIKeyType}}
+	default:
+		return BarcodeLookupResult{}, fmt.Errorf("unsupported barcode provider %q", provider)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	result, raw, err := client.LookupBarcode(ctx, barcode)
+	if err != nil {
+		return BarcodeLookupResult{}, err
+	}
+	result.Provider = provider
+	result.Barcode = barcode
+	result.SourceTier = "provider"
+	result.ProviderConfidence = providerBaseConfidence(provider)
+	result.NutritionCompleteness = deriveNutritionCompleteness(result)
+	if err := upsertBarcodeCache(db, result, raw, time.Now().Add(defaultBarcodeTTL)); err != nil {
+		return BarcodeLookupResult{}, err
+	}
+	return result, nil
+}
+
+func ListBarcodeCache(db *sql.DB, provider string, limit int) ([]BarcodeCacheItem, error) {
+	provider = normalizeBarcodeProvider(provider)
+	if limit <= 0 {
+		limit = 100
+	}
+	base := `SELECT provider, barcode, description, brand, expires_at FROM barcode_cache`
+	args := make([]any, 0, 2)
+	if provider != "" {
+		base += ` WHERE provider = ?`
+		args = append(args, provider)
+	}
+	base += ` ORDER BY fetched_at DESC LIMIT ?`
+	args = append(args, limit)
+	rows, err := db.Query(base, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list barcode cache: %w", err)
+	}
+	defer rows.Close()
+	out := make([]BarcodeCacheItem, 0)
+	for rows.Next() {
+		var item BarcodeCacheItem
+		var expires string
+		if err := rows.Scan(&item.Provider, &item.Barcode, &item.Description, &item.Brand, &expires); err != nil {
+			return nil, fmt.Errorf("scan barcode cache: %w", err)
+		}
+		item.ExpiresAt, _ = time.Parse(time.RFC3339, expires)
+		out = append(out, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate barcode cache: %w", err)
+	}
+	return out, nil
+}
+
+func PurgeBarcodeCache(db *sql.DB, provider, barcode string, purgeAll bool) (int64, error) {
+	provider = normalizeBarcodeProvider(provider)
+	barcode = strings.TrimSpace(barcode)
+
+	var (
+		res sql.Result
+		err error
+	)
+	switch {
+	case purgeAll:
+		res, err = db.Exec(`DELETE FROM barcode_cache`)
+	case provider != "" && barcode != "":
+		res, err = db.Exec(`DELETE FROM barcode_cache WHERE provider = ? AND barcode = ?`, provider, barcode)
+	case provider != "":
+		res, err = db.Exec(`DELETE FROM barcode_cache WHERE provider = ?`, provider)
+	case barcode != "":
+		res, err = db.Exec(`DELETE FROM barcode_cache WHERE barcode = ?`, barcode)
+	default:
+		return 0, fmt.Errorf("specify --all, --provider, --barcode, or provider+barcode")
+	}
+	if err != nil {
+		return 0, fmt.Errorf("purge barcode cache: %w", err)
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("purge barcode cache rows affected: %w", err)
+	}
+	return affected, nil
 }
 
 func LookupBarcodeWithFallback(db *sql.DB, barcode string, candidates []BarcodeLookupCandidate) (BarcodeLookupResult, error) {

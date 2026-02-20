@@ -29,8 +29,8 @@ func TestApplyMigrationsIdempotentAndSeedsDefaults(t *testing.T) {
 	if err := sqldb.QueryRow(`SELECT COUNT(1) FROM schema_migrations`).Scan(&migrationCount); err != nil {
 		t.Fatalf("count migrations: %v", err)
 	}
-	if migrationCount != 6 {
-		t.Fatalf("expected 6 migration versions, got %d", migrationCount)
+	if migrationCount != 7 {
+		t.Fatalf("expected 7 migration versions, got %d", migrationCount)
 	}
 
 	var metadataColCount int
@@ -39,6 +39,14 @@ func TestApplyMigrationsIdempotentAndSeedsDefaults(t *testing.T) {
 	}
 	if metadataColCount != 1 {
 		t.Fatalf("expected metadata_json column in entries table")
+	}
+
+	var configTableCount int
+	if err := sqldb.QueryRow(`SELECT COUNT(1) FROM sqlite_master WHERE type = 'table' AND name = 'app_config'`).Scan(&configTableCount); err != nil {
+		t.Fatalf("check app_config table: %v", err)
+	}
+	if configTableCount != 1 {
+		t.Fatalf("expected app_config table to exist")
 	}
 
 	var categoryCount int

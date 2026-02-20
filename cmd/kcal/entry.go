@@ -102,6 +102,37 @@ var entryListCmd = &cobra.Command{
 	},
 }
 
+var entryShowCmd = &cobra.Command{
+	Use:   "show <id>",
+	Short: "Show a single entry",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		id, err := parseInt64Arg("entry id", args[0])
+		if err != nil {
+			return err
+		}
+		return withDB(func(sqldb *sql.DB) error {
+			e, err := service.EntryByID(sqldb, id)
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "ID: %d\n", e.ID)
+			fmt.Fprintf(cmd.OutOrStdout(), "Date: %s\n", e.ConsumedAt.Local().Format("2006-01-02 15:04"))
+			fmt.Fprintf(cmd.OutOrStdout(), "Category: %s\n", e.Category)
+			fmt.Fprintf(cmd.OutOrStdout(), "Name: %s\n", e.Name)
+			fmt.Fprintf(cmd.OutOrStdout(), "Calories: %d\n", e.Calories)
+			fmt.Fprintf(cmd.OutOrStdout(), "Protein: %.1f\nCarbs: %.1f\nFat: %.1f\n", e.ProteinG, e.CarbsG, e.FatG)
+			fmt.Fprintf(cmd.OutOrStdout(), "Source: %s\n", e.SourceType)
+			if e.SourceID != nil {
+				fmt.Fprintf(cmd.OutOrStdout(), "Source ID: %d\n", *e.SourceID)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Notes: %s\n", e.Notes)
+			fmt.Fprintf(cmd.OutOrStdout(), "Metadata: %s\n", e.Metadata)
+			return nil
+		})
+	},
+}
+
 var (
 	updateName     string
 	updateCalories int
@@ -112,6 +143,7 @@ var (
 	updateDate     string
 	updateTime     string
 	updateNotes    string
+	updateMetadata string
 )
 
 var entryUpdateCmd = &cobra.Command{
@@ -129,21 +161,44 @@ var entryUpdateCmd = &cobra.Command{
 		}
 
 		in := service.UpdateEntryInput{
-			ID:       id,
-			Name:     updateName,
-			Calories: updateCalories,
-			ProteinG: updateProtein,
-			CarbsG:   updateCarbs,
-			FatG:     updateFat,
-			Category: updateCategory,
-			Consumed: consumed,
-			Notes:    updateNotes,
+			ID:          id,
+			Name:        updateName,
+			Calories:    updateCalories,
+			ProteinG:    updateProtein,
+			CarbsG:      updateCarbs,
+			FatG:        updateFat,
+			Category:    updateCategory,
+			Consumed:    consumed,
+			Notes:       updateNotes,
+			Metadata:    updateMetadata,
+			MetadataSet: cmd.Flags().Changed("metadata-json"),
 		}
 		return withDB(func(sqldb *sql.DB) error {
 			if err := service.UpdateEntry(sqldb, in); err != nil {
 				return err
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Updated entry %d\n", id)
+			return nil
+		})
+	},
+}
+
+var entryMetadataSet string
+
+var entryMetadataCmd = &cobra.Command{
+	Use:   "metadata <id>",
+	Short: "Update entry metadata JSON",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		id, err := parseInt64Arg("entry id", args[0])
+		if err != nil {
+			return err
+		}
+		return withDB(func(sqldb *sql.DB) error {
+			if err := service.UpdateEntryMetadata(sqldb, id, entryMetadataSet); err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Updated metadata for entry %d\n", id)
 			return nil
 		})
 	},
@@ -293,7 +348,7 @@ func parseMetadataObject(value string) (map[string]any, error) {
 
 func init() {
 	rootCmd.AddCommand(entryCmd)
-	entryCmd.AddCommand(entryAddCmd, entryListCmd, entryUpdateCmd, entryDeleteCmd)
+	entryCmd.AddCommand(entryAddCmd, entryListCmd, entryShowCmd, entryMetadataCmd, entryUpdateCmd, entryDeleteCmd)
 
 	addEntryFields(entryAddCmd, "add")
 	_ = entryAddCmd.MarkFlagRequired("category")
@@ -314,6 +369,7 @@ func init() {
 	entryUpdateCmd.Flags().StringVar(&updateDate, "date", "", "Date in YYYY-MM-DD")
 	entryUpdateCmd.Flags().StringVar(&updateTime, "time", "", "Time in HH:MM")
 	entryUpdateCmd.Flags().StringVar(&updateNotes, "notes", "", "Optional notes")
+	entryUpdateCmd.Flags().StringVar(&updateMetadata, "metadata-json", "", "Metadata JSON object")
 	_ = entryUpdateCmd.MarkFlagRequired("name")
 	_ = entryUpdateCmd.MarkFlagRequired("calories")
 	_ = entryUpdateCmd.MarkFlagRequired("protein")
@@ -322,4 +378,6 @@ func init() {
 	_ = entryUpdateCmd.MarkFlagRequired("category")
 	_ = entryUpdateCmd.MarkFlagRequired("date")
 	_ = entryUpdateCmd.MarkFlagRequired("time")
+	entryMetadataCmd.Flags().StringVar(&entryMetadataSet, "metadata-json", "", "Metadata JSON object")
+	_ = entryMetadataCmd.MarkFlagRequired("metadata-json")
 }

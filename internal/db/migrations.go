@@ -176,6 +176,17 @@ CREATE TABLE IF NOT EXISTS barcode_overrides (
 ALTER TABLE entries ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '';
 `,
 	},
+	{
+		version: 7,
+		name:    "app_config",
+		sql: `
+CREATE TABLE IF NOT EXISTS app_config (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+`,
+	},
 }
 
 var defaultCategories = []string{"breakfast", "lunch", "dinner", "snacks"}

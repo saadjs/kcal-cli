@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -311,5 +312,131 @@ func TestEntryAddWithBarcodeFallbackSkipsMissingUSDAKey(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "Fallback Snack") {
 		t.Fatalf("expected entry from fallback provider in list output, got: %s", stdout)
+	}
+}
+
+func TestEntryShowAndMetadataUpdate(t *testing.T) {
+	binPath := buildKcalBinary(t)
+	dbPath := filepath.Join(t.TempDir(), "kcal.db")
+	initDB(t, binPath, dbPath)
+
+	stdout, stderr, exit := runKcal(t, binPath, dbPath, "entry", "add",
+		"--name", "Metadata Meal",
+		"--calories", "420",
+		"--protein", "25",
+		"--carbs", "35",
+		"--fat", "18",
+		"--category", "lunch",
+		"--metadata-json", `{"imported":true}`,
+		"--date", "2026-02-20",
+		"--time", "12:15",
+	)
+	if exit != 0 {
+		t.Fatalf("entry add failed: exit=%d stderr=%s", exit, stderr)
+	}
+	if !strings.Contains(stdout, "Added entry") {
+		t.Fatalf("unexpected add output: %s", stdout)
+	}
+
+	_, stderr, exit = runKcal(t, binPath, dbPath, "entry", "metadata", "1", "--metadata-json", `{"edited":"yes"}`)
+	if exit != 0 {
+		t.Fatalf("entry metadata update failed: exit=%d stderr=%s", exit, stderr)
+	}
+	showOut, stderr, exit := runKcal(t, binPath, dbPath, "entry", "show", "1")
+	if exit != 0 {
+		t.Fatalf("entry show failed: exit=%d stderr=%s", exit, stderr)
+	}
+	if !strings.Contains(showOut, `Metadata: {"edited":"yes"}`) {
+		t.Fatalf("expected updated metadata in show output, got: %s", showOut)
+	}
+}
+
+func TestConfigSetAndBarcodeDefaults(t *testing.T) {
+	binPath := buildKcalBinary(t)
+	dbPath := filepath.Join(t.TempDir(), "kcal.db")
+	initDB(t, binPath, dbPath)
+
+	_, stderr, exit := runKcal(t, binPath, dbPath, "config", "set",
+		"--barcode-provider", "openfoodfacts",
+		"--fallback-order", "openfoodfacts,upcitemdb",
+		"--api-key-hint", "set KCAL_USDA_API_KEY",
+	)
+	if exit != 0 {
+		t.Fatalf("config set failed: exit=%d stderr=%s", exit, stderr)
+	}
+	cfgOut, stderr, exit := runKcal(t, binPath, dbPath, "config", "get")
+	if exit != 0 {
+		t.Fatalf("config get failed: exit=%d stderr=%s", exit, stderr)
+	}
+	if !strings.Contains(cfgOut, "barcode_provider\topenfoodfacts") {
+		t.Fatalf("expected barcode provider config, got: %s", cfgOut)
+	}
+
+	_, stderr, exit = runKcal(t, binPath, dbPath, "lookup", "override", "set", "3017620422003",
+		"--provider", "openfoodfacts",
+		"--name", "Config Snack",
+		"--brand", "Test",
+		"--serving-amount", "20",
+		"--serving-unit", "g",
+		"--calories", "120",
+		"--protein", "2",
+		"--carbs", "12",
+		"--fat", "7",
+	)
+	if exit != 0 {
+		t.Fatalf("override set failed: exit=%d stderr=%s", exit, stderr)
+	}
+
+	lookupOut, stderr, exit := runKcal(t, binPath, dbPath, "lookup", "barcode", "3017620422003")
+	if exit != 0 {
+		t.Fatalf("lookup barcode using config defaults failed: exit=%d stderr=%s", exit, stderr)
+	}
+	if !strings.Contains(lookupOut, "Provider: openfoodfacts (override)") {
+		t.Fatalf("expected default provider from config, got: %s", lookupOut)
+	}
+}
+
+func TestExportImportJSONRoundTrip(t *testing.T) {
+	binPath := buildKcalBinary(t)
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "kcal.db")
+	importDB := filepath.Join(dir, "kcal-import.db")
+	exportPath := filepath.Join(dir, "export.json")
+	initDB(t, binPath, dbPath)
+
+	_, stderr, exit := runKcal(t, binPath, dbPath, "entry", "add",
+		"--name", "Portable Meal",
+		"--calories", "500",
+		"--protein", "30",
+		"--carbs", "50",
+		"--fat", "20",
+		"--category", "dinner",
+		"--metadata-json", `{"portable":true}`,
+		"--date", "2026-02-20",
+		"--time", "19:00",
+	)
+	if exit != 0 {
+		t.Fatalf("seed entry failed: exit=%d stderr=%s", exit, stderr)
+	}
+
+	_, stderr, exit = runKcal(t, binPath, dbPath, "export", "--format", "json", "--out", exportPath)
+	if exit != 0 {
+		t.Fatalf("export json failed: exit=%d stderr=%s", exit, stderr)
+	}
+	if _, err := os.Stat(exportPath); err != nil {
+		t.Fatalf("expected export file to exist: %v", err)
+	}
+
+	initDB(t, binPath, importDB)
+	_, stderr, exit = runKcal(t, binPath, importDB, "import", "--format", "json", "--in", exportPath)
+	if exit != 0 {
+		t.Fatalf("import json failed: exit=%d stderr=%s", exit, stderr)
+	}
+	listOut, stderr, exit := runKcal(t, binPath, importDB, "entry", "list", "--with-metadata")
+	if exit != 0 {
+		t.Fatalf("entry list after import failed: exit=%d stderr=%s", exit, stderr)
+	}
+	if !strings.Contains(listOut, "Portable Meal") || !strings.Contains(listOut, `"portable":true`) {
+		t.Fatalf("expected imported entry and metadata in list output, got: %s", listOut)
 	}
 }

@@ -109,6 +109,20 @@ func printAnalyticsTable(cmd *cobra.Command, r *service.AnalyticsReport) {
 		fmt.Fprintf(out, "%s\t%d\t%.1f\t%.1f\t%.1f\n", c.Category, c.Calories, c.Protein, c.Carbs, c.Fat)
 	}
 
+	fmt.Fprintln(out, "\nSources")
+	for source, count := range r.Metadata.SourceCounts {
+		fmt.Fprintf(out, "%s: %d\n", source, count)
+	}
+	if len(r.Metadata.BarcodeTierCounts) > 0 {
+		fmt.Fprintln(out, "Barcode tiers:")
+		for tier, count := range r.Metadata.BarcodeTierCounts {
+			fmt.Fprintf(out, "  %s: %d\n", tier, count)
+		}
+	}
+	if r.Metadata.Confidence.Count > 0 {
+		fmt.Fprintf(out, "Confidence: n=%d avg=%.2f min=%.2f max=%.2f\n", r.Metadata.Confidence.Count, r.Metadata.Confidence.Avg, r.Metadata.Confidence.Min, r.Metadata.Confidence.Max)
+	}
+
 	fmt.Fprintln(out, "\nBody")
 	fmt.Fprintf(out, "Measurements: %d\n", r.Body.MeasurementsCount)
 	if r.Body.MeasurementsCount > 0 {

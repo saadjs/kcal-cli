@@ -3,7 +3,7 @@
 .env.*
 
 # Local project binary
-kcal
+/kcal
 
 # Go build artifacts
 *.exe

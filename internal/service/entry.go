@@ -33,15 +33,17 @@ type ListEntriesFilter struct {
 }
 
 type UpdateEntryInput struct {
-	ID       int64
-	Name     string
-	Calories int
-	ProteinG float64
-	CarbsG   float64
-	FatG     float64
-	Category string
-	Consumed time.Time
-	Notes    string
+	ID          int64
+	Name        string
+	Calories    int
+	ProteinG    float64
+	CarbsG      float64
+	FatG        float64
+	Category    string
+	Consumed    time.Time
+	Notes       string
+	Metadata    string
+	MetadataSet bool
 }
 
 func CreateEntry(db *sql.DB, in CreateEntryInput) (int64, error) {
@@ -196,12 +198,22 @@ func UpdateEntry(db *sql.DB, in UpdateEntryInput) error {
 	if err != nil {
 		return err
 	}
-
-	res, err := db.Exec(`
+	query := `
 UPDATE entries
-SET name = ?, calories = ?, protein_g = ?, carbs_g = ?, fat_g = ?, category_id = ?, consumed_at = ?, notes = ?, updated_at = CURRENT_TIMESTAMP
-WHERE id = ?
-`, in.Name, in.Calories, in.ProteinG, in.CarbsG, in.FatG, categoryID, in.Consumed.Format(time.RFC3339), strings.TrimSpace(in.Notes), in.ID)
+SET name = ?, calories = ?, protein_g = ?, carbs_g = ?, fat_g = ?, category_id = ?, consumed_at = ?, notes = ?`
+	args := []any{in.Name, in.Calories, in.ProteinG, in.CarbsG, in.FatG, categoryID, in.Consumed.Format(time.RFC3339), strings.TrimSpace(in.Notes)}
+	if in.MetadataSet {
+		metadata, err := normalizeEntryMetadata(in.Metadata)
+		if err != nil {
+			return err
+		}
+		query += `, metadata_json = ?`
+		args = append(args, metadata)
+	}
+	query += `, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+	args = append(args, in.ID)
+
+	res, err := db.Exec(query, args...)
 	if err != nil {
 		return fmt.Errorf("update entry %d: %w", in.ID, err)
 	}
@@ -211,6 +223,60 @@ WHERE id = ?
 	}
 	if affected == 0 {
 		return fmt.Errorf("entry %d not found", in.ID)
+	}
+	return nil
+}
+
+func EntryByID(db *sql.DB, id int64) (*model.Entry, error) {
+	if id <= 0 {
+		return nil, fmt.Errorf("entry id must be > 0")
+	}
+	row := db.QueryRow(`
+SELECT e.id, e.name, e.calories, e.protein_g, e.carbs_g, e.fat_g, e.category_id, c.name, e.consumed_at, IFNULL(e.notes, ''), e.source_type, e.source_id, IFNULL(e.metadata_json, '')
+FROM entries e
+JOIN categories c ON c.id = e.category_id
+WHERE e.id = ?
+`, id)
+
+	var e model.Entry
+	var consumedAtRaw string
+	var sourceID sql.NullInt64
+	if err := row.Scan(&e.ID, &e.Name, &e.Calories, &e.ProteinG, &e.CarbsG, &e.FatG, &e.CategoryID, &e.Category, &consumedAtRaw, &e.Notes, &e.SourceType, &sourceID, &e.Metadata); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("entry %d not found", id)
+		}
+		return nil, fmt.Errorf("query entry %d: %w", id, err)
+	}
+	consumedAt, err := time.Parse(time.RFC3339, consumedAtRaw)
+	if err != nil {
+		return nil, fmt.Errorf("parse consumed_at for entry %d: %w", e.ID, err)
+	}
+	e.ConsumedAt = consumedAt
+	if sourceID.Valid {
+		v := sourceID.Int64
+		e.SourceID = &v
+	}
+	return &e, nil
+}
+
+func UpdateEntryMetadata(db *sql.DB, id int64, metadata string) error {
+	if id <= 0 {
+		return fmt.Errorf("entry id must be > 0")
+	}
+	normalized, err := normalizeEntryMetadata(metadata)
+	if err != nil {
+		return err
+	}
+	res, err := db.Exec(`UPDATE entries SET metadata_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, normalized, id)
+	if err != nil {
+		return fmt.Errorf("update entry metadata %d: %w", id, err)
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("read rows affected for entry %d: %w", id, err)
+	}
+	if affected == 0 {
+		return fmt.Errorf("entry %d not found", id)
 	}
 	return nil
 }

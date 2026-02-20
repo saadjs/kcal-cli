@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/saad/kcal-cli/internal/service"
 	"github.com/spf13/cobra"
@@ -46,6 +47,9 @@ var (
 	overrideF           float64
 	overrideNotes       string
 	overrideLimit       int
+	cacheLimit          int
+	cacheBarcode        string
+	cachePurgeAll       bool
 )
 
 var lookupBarcodeCmd = &cobra.Command{
@@ -91,6 +95,76 @@ var lookupBarcodeCmd = &cobra.Command{
 var lookupOverrideCmd = &cobra.Command{
 	Use:   "override",
 	Short: "Manage local barcode nutrition overrides",
+}
+
+var lookupCacheCmd = &cobra.Command{
+	Use:   "cache",
+	Short: "Manage barcode lookup cache",
+}
+
+var lookupCacheListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List barcode cache rows",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return withDB(func(sqldb *sql.DB) error {
+			items, err := service.ListBarcodeCache(sqldb, lookupProvider, cacheLimit)
+			if err != nil {
+				return err
+			}
+			if lookupJSON {
+				b, err := json.MarshalIndent(items, "", "  ")
+				if err != nil {
+					return fmt.Errorf("marshal cache list json: %w", err)
+				}
+				fmt.Fprintln(cmd.OutOrStdout(), string(b))
+				return nil
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "PROVIDER\tBARCODE\tNAME\tBRAND\tEXPIRES_AT")
+			for _, it := range items {
+				fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\t%s\t%s\t%s\n", it.Provider, it.Barcode, it.Description, it.Brand, it.ExpiresAt.Format(time.RFC3339))
+			}
+			return nil
+		})
+	},
+}
+
+var lookupCachePurgeCmd = &cobra.Command{
+	Use:   "purge",
+	Short: "Purge barcode cache rows",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return withDB(func(sqldb *sql.DB) error {
+			count, err := service.PurgeBarcodeCache(sqldb, lookupProvider, cacheBarcode, cachePurgeAll)
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Purged %d cache row(s)\n", count)
+			return nil
+		})
+	},
+}
+
+var lookupCacheRefreshCmd = &cobra.Command{
+	Use:   "refresh <barcode>",
+	Short: "Refresh cache from live provider lookup",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		provider := resolveBarcodeProvider(lookupProvider)
+		apiKey, err := resolveProviderAPIKey(provider, lookupAPIKey)
+		if err != nil {
+			return err
+		}
+		return withDB(func(sqldb *sql.DB) error {
+			result, err := service.RefreshBarcodeCache(sqldb, provider, args[0], service.BarcodeLookupOptions{
+				APIKey:     apiKey,
+				APIKeyType: resolveProviderAPIKeyType(provider, lookupAPIKeyType),
+			})
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Refreshed cache for %s (%s): %s\n", result.Barcode, result.Provider, result.Description)
+			return nil
+		})
+	},
 }
 
 var lookupOverrideSetCmd = &cobra.Command{
@@ -343,6 +417,19 @@ func resolveProviderAPIKeyType(provider string, flagValue string) string {
 }
 
 func performBarcodeLookup(sqldb *sql.DB, barcode, providerFlag, apiKeyFlag, apiKeyTypeFlag string, fallback bool, fallbackOrder string) (service.BarcodeLookupResult, error) {
+	providerFlag = strings.TrimSpace(providerFlag)
+	if providerFlag == "" && strings.TrimSpace(os.Getenv("KCAL_BARCODE_PROVIDER")) == "" {
+		if v := lookupConfigValue(sqldb, service.ConfigBarcodeProvider); v != "" {
+			providerFlag = v
+		}
+	}
+	fallbackOrder = strings.TrimSpace(fallbackOrder)
+	if fallbackOrder == "" && strings.TrimSpace(os.Getenv("KCAL_BARCODE_FALLBACK_ORDER")) == "" {
+		if v := lookupConfigValue(sqldb, service.ConfigBarcodeFallbackOrder); v != "" {
+			fallbackOrder = v
+		}
+	}
+
 	if !fallback {
 		provider := resolveBarcodeProvider(providerFlag)
 		apiKey, err := resolveProviderAPIKey(provider, apiKeyFlag)
@@ -375,6 +462,17 @@ func performBarcodeLookup(sqldb *sql.DB, barcode, providerFlag, apiKeyFlag, apiK
 		return service.BarcodeLookupResult{}, fmt.Errorf("no usable lookup providers configured; set provider API key or disable fallback")
 	}
 	return service.LookupBarcodeWithFallback(sqldb, barcode, candidates)
+}
+
+func lookupConfigValue(sqldb *sql.DB, key string) string {
+	if sqldb == nil {
+		return ""
+	}
+	v, ok, err := service.GetConfig(sqldb, key)
+	if err != nil || !ok {
+		return ""
+	}
+	return strings.TrimSpace(v)
 }
 
 func resolveFallbackProviders(providerFlag, fallbackOrder string) []string {
@@ -466,8 +564,9 @@ var lookupUPCItemDBHelpCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(lookupCmd)
-	lookupCmd.AddCommand(lookupBarcodeCmd, lookupProvidersCmd, lookupUSDAHelpCmd, lookupOpenFoodFactsHelpCmd, lookupUPCItemDBHelpCmd, lookupOverrideCmd)
+	lookupCmd.AddCommand(lookupBarcodeCmd, lookupProvidersCmd, lookupUSDAHelpCmd, lookupOpenFoodFactsHelpCmd, lookupUPCItemDBHelpCmd, lookupOverrideCmd, lookupCacheCmd)
 	lookupOverrideCmd.AddCommand(lookupOverrideSetCmd, lookupOverrideShowCmd, lookupOverrideListCmd, lookupOverrideDeleteCmd)
+	lookupCacheCmd.AddCommand(lookupCacheListCmd, lookupCachePurgeCmd, lookupCacheRefreshCmd)
 
 	lookupBarcodeCmd.Flags().StringVar(&lookupProvider, "provider", "", "Barcode provider: usda, openfoodfacts, or upcitemdb (or set KCAL_BARCODE_PROVIDER)")
 	lookupBarcodeCmd.Flags().StringVar(&lookupAPIKey, "api-key", "", "Provider API key (USDA/UPCitemdb)")
@@ -498,4 +597,13 @@ func init() {
 	_ = lookupOverrideSetCmd.MarkFlagRequired("fat")
 
 	lookupOverrideListCmd.Flags().IntVar(&overrideLimit, "limit", 100, "Max overrides to return")
+	lookupCacheListCmd.Flags().StringVar(&lookupProvider, "provider", "", "Filter by provider")
+	lookupCacheListCmd.Flags().IntVar(&cacheLimit, "limit", 100, "Max cached rows to return")
+	lookupCacheListCmd.Flags().BoolVar(&lookupJSON, "json", false, "Output as JSON")
+	lookupCachePurgeCmd.Flags().StringVar(&lookupProvider, "provider", "", "Purge cache rows for provider")
+	lookupCachePurgeCmd.Flags().StringVar(&cacheBarcode, "barcode", "", "Purge cache rows for barcode")
+	lookupCachePurgeCmd.Flags().BoolVar(&cachePurgeAll, "all", false, "Purge all cache rows")
+	lookupCacheRefreshCmd.Flags().StringVar(&lookupProvider, "provider", "", "Provider for refresh")
+	lookupCacheRefreshCmd.Flags().StringVar(&lookupAPIKey, "api-key", "", "Provider API key (USDA/UPCitemdb)")
+	lookupCacheRefreshCmd.Flags().StringVar(&lookupAPIKeyType, "api-key-type", "", "Provider API key type (UPCitemdb)")
 }

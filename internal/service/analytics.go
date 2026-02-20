@@ -2,6 +2,7 @@ package service
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"time"
@@ -56,6 +57,19 @@ type BodySummary struct {
 	Points            []BodyPoint       `json:"points"`
 }
 
+type ConfidenceStats struct {
+	Count int     `json:"count"`
+	Avg   float64 `json:"avg"`
+	Min   float64 `json:"min"`
+	Max   float64 `json:"max"`
+}
+
+type MetadataSummary struct {
+	SourceCounts      map[string]int  `json:"source_counts"`
+	BarcodeTierCounts map[string]int  `json:"barcode_tier_counts"`
+	Confidence        ConfidenceStats `json:"confidence"`
+}
+
 type AnalyticsReport struct {
 	FromDate              string              `json:"from_date"`
 	ToDate                string              `json:"to_date"`
@@ -74,6 +88,7 @@ type AnalyticsReport struct {
 	ByCategory            []CategoryBreakdown `json:"by_category"`
 	Days                  []DaySummary        `json:"days"`
 	Body                  BodySummary         `json:"body"`
+	Metadata              MetadataSummary     `json:"metadata"`
 }
 
 type AdherenceSummary struct {
@@ -134,6 +149,12 @@ func AnalyticsRange(db *sql.DB, from, to time.Time, tolerance float64) (*Analyti
 		return nil, err
 	}
 	report.Body = body
+
+	metadata, err := calculateMetadataSummary(db, from, to)
+	if err != nil {
+		return nil, err
+	}
+	report.Metadata = metadata
 
 	return report, nil
 }
@@ -333,4 +354,75 @@ func extremeDays(days []DaySummary) (*DaySummary, *DaySummary) {
 func beginningOfDay(t time.Time) time.Time {
 	y, m, d := t.Date()
 	return time.Date(y, m, d, 0, 0, 0, 0, time.Local)
+}
+
+func calculateMetadataSummary(db *sql.DB, from, to time.Time) (MetadataSummary, error) {
+	rows, err := db.Query(`
+SELECT source_type, IFNULL(metadata_json, '')
+FROM entries
+WHERE consumed_at >= ? AND consumed_at < ?
+`, from.Format(time.RFC3339), to.Add(24*time.Hour).Format(time.RFC3339))
+	if err != nil {
+		return MetadataSummary{}, fmt.Errorf("query metadata analytics: %w", err)
+	}
+	defer rows.Close()
+
+	out := MetadataSummary{
+		SourceCounts:      map[string]int{},
+		BarcodeTierCounts: map[string]int{},
+	}
+	confMinSet := false
+	for rows.Next() {
+		var sourceType string
+		var metadataRaw string
+		if err := rows.Scan(&sourceType, &metadataRaw); err != nil {
+			return MetadataSummary{}, fmt.Errorf("scan metadata analytics: %w", err)
+		}
+		out.SourceCounts[sourceType]++
+
+		if metadataRaw == "" {
+			continue
+		}
+		var meta map[string]any
+		if err := json.Unmarshal([]byte(metadataRaw), &meta); err != nil {
+			continue
+		}
+		if tier, ok := meta["source_tier"].(string); ok && tier != "" {
+			out.BarcodeTierCounts[tier]++
+		}
+		if v, ok := meta["provider_confidence"]; ok {
+			conf, ok := numericValue(v)
+			if ok {
+				out.Confidence.Count++
+				out.Confidence.Avg += conf
+				if !confMinSet || conf < out.Confidence.Min {
+					out.Confidence.Min = conf
+					confMinSet = true
+				}
+				if conf > out.Confidence.Max {
+					out.Confidence.Max = conf
+				}
+			}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return MetadataSummary{}, fmt.Errorf("iterate metadata analytics: %w", err)
+	}
+	if out.Confidence.Count > 0 {
+		out.Confidence.Avg = out.Confidence.Avg / float64(out.Confidence.Count)
+	}
+	return out, nil
+}
+
+func numericValue(v any) (float64, bool) {
+	switch t := v.(type) {
+	case float64:
+		return t, true
+	case int:
+		return float64(t), true
+	case int64:
+		return float64(t), true
+	default:
+		return 0, false
+	}
 }
