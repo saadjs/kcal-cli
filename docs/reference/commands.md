@@ -102,17 +102,21 @@ kcal doctor --fix
 ## Lookup and Providers
 
 - `kcal lookup barcode <code>`
+- `kcal lookup search --query <text> [--fallback --limit N --verified-only --verified-min-score X]`
 - `kcal lookup providers`
 - `kcal lookup usda-help|openfoodfacts-help|upcitemdb-help`
 - `kcal lookup override set|show|list|delete`
 - `kcal lookup cache list|purge|refresh`
+- `kcal lookup cache search-list|search-purge`
 
 Example:
 
 ```bash
 kcal lookup barcode 3017620422003 --provider openfoodfacts
+kcal lookup search --query "greek yogurt" --fallback --limit 10 --verified-only
 kcal lookup override list --provider openfoodfacts
 kcal lookup cache purge --provider openfoodfacts --all
+kcal lookup cache search-list --provider openfoodfacts --query "greek yogurt"
 ```
 
 ## Command Help

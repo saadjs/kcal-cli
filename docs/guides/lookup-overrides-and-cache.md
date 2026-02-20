@@ -51,6 +51,12 @@ List cache rows:
 kcal lookup cache list --provider openfoodfacts --limit 50
 ```
 
+List text-search cache rows:
+
+```bash
+kcal lookup cache search-list --provider openfoodfacts --query "greek yogurt" --limit 50
+```
+
 Refresh one barcode:
 
 ```bash
@@ -61,6 +67,13 @@ Purge cache rows:
 
 ```bash
 kcal lookup cache purge --provider openfoodfacts --all
+```
+
+Purge text-search cache rows:
+
+```bash
+kcal lookup cache search-purge --provider openfoodfacts --query "greek yogurt"
+kcal lookup cache search-purge --all
 ```
 
 ## Resolution Order

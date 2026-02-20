@@ -62,6 +62,17 @@ export KCAL_BARCODE_FALLBACK_ORDER="usda,openfoodfacts,upcitemdb"
 kcal lookup barcode 012345678905 --fallback
 ```
 
+## Text Search and Verification
+
+```bash
+kcal lookup search --query "greek yogurt" --fallback --limit 10
+kcal lookup search --query "greek yogurt" --fallback --verified-only --verified-min-score 0.85
+```
+
+Notes:
+- Search responses include `confidence_score` and `is_verified`.
+- `--verified-min-score` controls the verification threshold used by `--verified-only`.
+
 ## See Also
 
 - [Lookup Overrides and Cache](/kcal/guides/lookup-overrides-and-cache/)
