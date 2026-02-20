@@ -12,6 +12,7 @@
 - Ingredient-level recipe builder with recipe total recalculation
 - Exercise log CRUD with burned calories and activity details
 - Weekly/monthly/custom-range analytics with intake/exercise/net calories and exercise-adjusted adherence targets
+- Premium-style insights (`analytics insights`) with period-over-period deltas, consistency stats, and terminal charts
 
 ## Install
 
@@ -38,6 +39,7 @@ go build -o kcal .
 ./kcal recipe log "Overnight oats" --servings 1 --category breakfast
 ./kcal exercise add --type running --calories 300 --duration-min 35 --date 2026-02-20 --time 18:30
 ./kcal analytics week
+./kcal analytics insights range --from 2026-02-01 --to 2026-02-20 --granularity auto
 ```
 
 ## Command Reference
@@ -56,6 +58,7 @@ go build -o kcal .
 - `kcal recipe add|list|show|update|delete|log|recalc`
 - `kcal recipe ingredient add|list|update|delete`
 - `kcal analytics week|month|range`
+- `kcal analytics insights week|month|range [--granularity auto|day|week|month] [--no-charts] [--json] [--out <file>] [--out-format text|markdown|json]`
 - `kcal lookup barcode <code> [--provider usda|openfoodfacts|upcitemdb] [--api-key ...] [--json]`
 - `kcal lookup providers`
 - `kcal lookup usda-help`
