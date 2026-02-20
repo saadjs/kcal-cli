@@ -1,0 +1,24 @@
+# Local environment files
+.env
+.env.*
+
+# Local project binary
+kcal
+
+# Go build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+
+# Go coverage and profiling output
+*.out
+coverage.out
+cover.out
+cpu.out
+mem.out
+
+# Editor/OS noise
+.DS_Store
