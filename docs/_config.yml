@@ -5,3 +5,16 @@ url: "https://saadjs.github.io"
 theme: minima
 markdown: kramdown
 permalink: pretty
+
+# Publish docs as a single page on GitHub Pages
+defaults:
+  - scope:
+      path: ""
+      type: pages
+    values:
+      published: false
+  - scope:
+      path: "index.md"
+      type: pages
+    values:
+      published: true
