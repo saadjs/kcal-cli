@@ -64,6 +64,30 @@ var entryAddCmd = &cobra.Command{
 	},
 }
 
+var entryQuickCmd = &cobra.Command{
+	Use:   `quick "<name> | <kcal> <protein> <carbs> <fat> | <category>"`,
+	Short: "Add an entry from a compact quick string",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		consumed, err := parseDateTimeOrNow(entryDate, entryTime)
+		if err != nil {
+			return err
+		}
+		in, err := parseQuickEntryInput(args[0], consumed)
+		if err != nil {
+			return err
+		}
+		return withDB(func(sqldb *sql.DB) error {
+			id, err := service.CreateEntry(sqldb, in)
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Added entry %d\n", id)
+			return nil
+		})
+	},
+}
+
 var (
 	listDate      string
 	listFromDate  string
@@ -245,6 +269,59 @@ var entryDeleteCmd = &cobra.Command{
 	},
 }
 
+var (
+	searchQuery string
+	searchLimit int
+)
+
+var entrySearchCmd = &cobra.Command{
+	Use:   "search",
+	Short: "Search entries by name/notes",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return withDB(func(sqldb *sql.DB) error {
+			items, err := service.SearchEntries(sqldb, service.SearchEntriesFilter{
+				Query:    searchQuery,
+				Category: listCategory,
+				Limit:    searchLimit,
+			})
+			if err != nil {
+				return err
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "ID\tDATE\tCATEGORY\tNAME\tKCAL\tP\tC\tF\tSOURCE")
+			for _, e := range items {
+				fmt.Fprintf(cmd.OutOrStdout(), "%d\t%s\t%s\t%s\t%d\t%.1f\t%.1f\t%.1f\t%s\n", e.ID, e.ConsumedAt.Local().Format("2006-01-02 15:04"), e.Category, e.Name, e.Calories, e.ProteinG, e.CarbsG, e.FatG, e.SourceType)
+			}
+			return nil
+		})
+	},
+}
+
+var repeatCategory string
+
+var entryRepeatCmd = &cobra.Command{
+	Use:   "repeat <id>",
+	Short: "Repeat a previous entry at a new time",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		id, err := parseInt64Arg("entry id", args[0])
+		if err != nil {
+			return err
+		}
+		consumed, err := parseDateTimeOrNow(entryDate, entryTime)
+		if err != nil {
+			return err
+		}
+		return withDB(func(sqldb *sql.DB) error {
+			newID, err := service.RepeatEntry(sqldb, id, consumed, repeatCategory)
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Repeated entry %d as %d\n", id, newID)
+			return nil
+		})
+	},
+}
+
 func addEntryFields(cmd *cobra.Command, prefix string) {
 	cmd.Flags().StringVar(&entryName, "name", "", "Entry name")
 	cmd.Flags().IntVar(&entryCalories, "calories", 0, "Calories")
@@ -392,6 +469,30 @@ func parseMetadataObject(value string) (map[string]any, error) {
 	return out, nil
 }
 
+func parseQuickEntryInput(value string, consumed time.Time) (service.CreateEntryInput, error) {
+	parts := strings.Split(value, "|")
+	if len(parts) != 3 {
+		return service.CreateEntryInput{}, fmt.Errorf(`quick format is: "<name> | <kcal> <protein> <carbs> <fat> | <category>"`)
+	}
+	name := strings.TrimSpace(parts[0])
+	category := strings.TrimSpace(parts[2])
+	var kcal int
+	var p, c, f float64
+	if _, err := fmt.Sscanf(strings.TrimSpace(parts[1]), "%d %f %f %f", &kcal, &p, &c, &f); err != nil {
+		return service.CreateEntryInput{}, fmt.Errorf("invalid quick macros section; expected: <kcal> <protein> <carbs> <fat>")
+	}
+	return service.CreateEntryInput{
+		Name:       name,
+		Calories:   kcal,
+		ProteinG:   p,
+		CarbsG:     c,
+		FatG:       f,
+		Category:   category,
+		Consumed:   consumed,
+		SourceType: "manual",
+	}, nil
+}
+
 func formatMicronutrientsSummary(raw string) string {
 	m, err := service.ParseMicronutrientsJSON(raw)
 	if err != nil || len(m) == 0 {
@@ -406,10 +507,21 @@ func formatMicronutrientsSummary(raw string) string {
 
 func init() {
 	rootCmd.AddCommand(entryCmd)
-	entryCmd.AddCommand(entryAddCmd, entryListCmd, entryShowCmd, entryMetadataCmd, entryUpdateCmd, entryDeleteCmd)
+	entryCmd.AddCommand(entryAddCmd, entryQuickCmd, entryListCmd, entrySearchCmd, entryRepeatCmd, entryShowCmd, entryMetadataCmd, entryUpdateCmd, entryDeleteCmd)
 
 	addEntryFields(entryAddCmd, "add")
 	_ = entryAddCmd.MarkFlagRequired("category")
+	entryQuickCmd.Flags().StringVar(&entryDate, "date", "", "Date in YYYY-MM-DD")
+	entryQuickCmd.Flags().StringVar(&entryTime, "time", "", "Time in HH:MM")
+
+	entrySearchCmd.Flags().StringVar(&searchQuery, "query", "", "Search query")
+	entrySearchCmd.Flags().StringVar(&listCategory, "category", "", "Filter by category")
+	entrySearchCmd.Flags().IntVar(&searchLimit, "limit", 20, "Result limit")
+	_ = entrySearchCmd.MarkFlagRequired("query")
+
+	entryRepeatCmd.Flags().StringVar(&entryDate, "date", "", "Date in YYYY-MM-DD")
+	entryRepeatCmd.Flags().StringVar(&entryTime, "time", "", "Time in HH:MM")
+	entryRepeatCmd.Flags().StringVar(&repeatCategory, "category", "", "Optional category override")
 
 	entryListCmd.Flags().StringVar(&listDate, "date", "", "Filter by date YYYY-MM-DD")
 	entryListCmd.Flags().StringVar(&listFromDate, "from", "", "Filter from date YYYY-MM-DD")

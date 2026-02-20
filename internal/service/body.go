@@ -214,3 +214,7 @@ func weightFromKg(weightKg float64, unit string) (float64, error) {
 func WeightFromKg(weightKg float64, unit string) (float64, error) {
 	return weightFromKg(weightKg, unit)
 }
+
+func ToKg(weight float64, unit string) (float64, error) {
+	return convertWeightToKg(weight, unit)
+}

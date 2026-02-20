@@ -25,6 +25,7 @@ type DoctorReport struct {
 	OrphanEntries      int `json:"orphan_entries"`
 	InvalidMetadata    int `json:"invalid_metadata"`
 	DuplicateEntryRows int `json:"duplicate_entry_rows"`
+	SuspiciousEntries  int `json:"suspicious_entries"`
 	FixedMetadataRows  int `json:"fixed_metadata_rows,omitempty"`
 }
 
@@ -144,6 +145,14 @@ SELECT COALESCE(SUM(cnt-1),0) FROM (
 )
 `).Scan(&report.DuplicateEntryRows); err != nil {
 		return report, fmt.Errorf("doctor duplicate query: %w", err)
+	}
+	if err := db.QueryRow(`
+SELECT COUNT(1)
+FROM entries
+WHERE calories > 5000
+   OR (protein_g * 4 + carbs_g * 4 + fat_g * 9) > (calories * 2)
+`).Scan(&report.SuspiciousEntries); err != nil {
+		return report, fmt.Errorf("doctor suspicious query: %w", err)
 	}
 
 	if fix && len(invalidIDs) > 0 {
