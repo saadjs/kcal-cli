@@ -1,6 +1,10 @@
 package kcal
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/saad/kcal-cli/internal/service"
+)
 
 func TestResolveWeekRangeRejectsMalformedWeek(t *testing.T) {
 	t.Parallel()
@@ -37,5 +41,24 @@ func TestResolveWeekRangeAcceptsValidISOWeek(t *testing.T) {
 	}
 	if end.Format("2006-01-02") != "2021-01-03" {
 		t.Fatalf("expected end 2021-01-03, got %s", end.Format("2006-01-02"))
+	}
+}
+
+func TestParseInsightsGranularityDefaultsToAuto(t *testing.T) {
+	t.Parallel()
+	got, err := parseInsightsGranularity("")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if got != service.InsightsGranularityAuto {
+		t.Fatalf("expected auto, got %s", got)
+	}
+}
+
+func TestParseInsightsGranularityRejectsInvalidValue(t *testing.T) {
+	t.Parallel()
+	_, err := parseInsightsGranularity("quarter")
+	if err == nil {
+		t.Fatalf("expected invalid granularity to fail")
 	}
 }

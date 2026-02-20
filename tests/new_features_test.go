@@ -165,6 +165,152 @@ func TestExerciseCommandsAndAnalyticsJSONFields(t *testing.T) {
 	}
 }
 
+func TestAnalyticsInsightsCommandsAndOutputModes(t *testing.T) {
+	binPath := buildKcalBinary(t)
+	dbPath := filepath.Join(t.TempDir(), "kcal.db")
+	initDB(t, binPath, dbPath)
+
+	_, stderr, exit := runKcal(t, binPath, dbPath,
+		"goal", "set",
+		"--calories", "2200",
+		"--protein", "160",
+		"--carbs", "240",
+		"--fat", "70",
+		"--effective-date", "2026-02-01",
+	)
+	if exit != 0 {
+		t.Fatalf("goal set failed: exit=%d stderr=%s", exit, stderr)
+	}
+
+	for _, args := range [][]string{
+		{"entry", "add", "--name", "Meal A", "--calories", "900", "--protein", "50", "--carbs", "100", "--fat", "25", "--category", "lunch", "--date", "2026-02-20", "--time", "12:00"},
+		{"entry", "add", "--name", "Meal B", "--calories", "700", "--protein", "40", "--carbs", "80", "--fat", "20", "--category", "dinner", "--date", "2026-02-19", "--time", "19:00"},
+	} {
+		_, stderr, exit = runKcal(t, binPath, dbPath, args...)
+		if exit != 0 {
+			t.Fatalf("entry add failed: exit=%d stderr=%s args=%v", exit, stderr, args)
+		}
+	}
+	_, stderr, exit = runKcal(t, binPath, dbPath,
+		"exercise", "add",
+		"--type", "running",
+		"--calories", "300",
+		"--date", "2026-02-20",
+		"--time", "18:00",
+	)
+	if exit != 0 {
+		t.Fatalf("exercise add failed: exit=%d stderr=%s", exit, stderr)
+	}
+
+	stdout, stderr, exit := runKcal(t, binPath, dbPath,
+		"analytics", "insights", "range",
+		"--from", "2026-02-20",
+		"--to", "2026-02-20",
+	)
+	if exit != 0 {
+		t.Fatalf("analytics insights range failed: exit=%d stderr=%s", exit, stderr)
+	}
+	for _, want := range []string{
+		"Key Metrics",
+		"Consistency",
+		"Trends",
+		"Streaks",
+		"Rolling Windows",
+		"Category Trends",
+		"Charts",
+		"Macro Sparklines",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("expected insights output to contain %q, got:\n%s", want, stdout)
+		}
+	}
+
+	stdout, stderr, exit = runKcal(t, binPath, dbPath,
+		"analytics", "insights", "range",
+		"--from", "2026-02-20",
+		"--to", "2026-02-20",
+		"--no-charts",
+	)
+	if exit != 0 {
+		t.Fatalf("analytics insights range --no-charts failed: exit=%d stderr=%s", exit, stderr)
+	}
+	if strings.Contains(stdout, "Charts") {
+		t.Fatalf("expected charts section to be suppressed with --no-charts, got:\n%s", stdout)
+	}
+
+	stdout, stderr, exit = runKcal(t, binPath, dbPath,
+		"analytics", "insights", "range",
+		"--from", "2026-02-20",
+		"--to", "2026-02-20",
+		"--json",
+	)
+	if exit != 0 {
+		t.Fatalf("analytics insights json failed: exit=%d stderr=%s", exit, stderr)
+	}
+	for _, want := range []string{
+		`"from_date"`,
+		`"previous_from_date"`,
+		`"granularity"`,
+		`"current"`,
+		`"deltas"`,
+		`"consistency"`,
+		`"trends"`,
+		`"extremes"`,
+		`"macro_balance"`,
+		`"streaks"`,
+		`"rolling_windows"`,
+		`"category_trends"`,
+		`"series"`,
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("expected insights json to contain %q, got:\n%s", want, stdout)
+		}
+	}
+
+	mdOut := filepath.Join(t.TempDir(), "insights_report.md")
+	stdout, stderr, exit = runKcal(t, binPath, dbPath,
+		"analytics", "insights", "range",
+		"--from", "2026-02-20",
+		"--to", "2026-02-20",
+		"--out", mdOut,
+		"--out-format", "markdown",
+		"--no-charts",
+	)
+	if exit != 0 {
+		t.Fatalf("analytics insights markdown export failed: exit=%d stderr=%s", exit, stderr)
+	}
+	if !strings.Contains(stdout, "Saved insights report to") {
+		t.Fatalf("expected saved-report message in stdout, got:\n%s", stdout)
+	}
+	mdRaw, err := os.ReadFile(mdOut)
+	if err != nil {
+		t.Fatalf("read markdown output: %v", err)
+	}
+	md := string(mdRaw)
+	if !strings.Contains(md, "# Analytics Insights Report") || !strings.Contains(md, "## Rolling Windows") {
+		t.Fatalf("expected markdown report sections, got:\n%s", md)
+	}
+
+	jsonOut := filepath.Join(t.TempDir(), "insights_report.json")
+	stdout, stderr, exit = runKcal(t, binPath, dbPath,
+		"analytics", "insights", "range",
+		"--from", "2026-02-20",
+		"--to", "2026-02-20",
+		"--out", jsonOut,
+		"--out-format", "json",
+	)
+	if exit != 0 {
+		t.Fatalf("analytics insights json export failed: exit=%d stderr=%s", exit, stderr)
+	}
+	jsonRaw, err := os.ReadFile(jsonOut)
+	if err != nil {
+		t.Fatalf("read json output: %v", err)
+	}
+	if !strings.Contains(string(jsonRaw), `"rolling_windows"`) || !strings.Contains(string(jsonRaw), `"category_trends"`) {
+		t.Fatalf("expected exported json report fields, got:\n%s", string(jsonRaw))
+	}
+}
+
 func TestRecipeIngredientLifecycleAndRecalc(t *testing.T) {
 	binPath := buildKcalBinary(t)
 	dbPath := filepath.Join(t.TempDir(), "kcal.db")
