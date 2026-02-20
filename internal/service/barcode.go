@@ -9,12 +9,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/saad/kcal-cli/internal/provider/openfoodfacts"
 	"github.com/saad/kcal-cli/internal/provider/usda"
 )
 
 const (
-	barcodeProviderUSDA = "usda"
-	defaultBarcodeTTL   = 30 * 24 * time.Hour
+	BarcodeProviderUSDA          = "usda"
+	BarcodeProviderOpenFoodFacts = "openfoodfacts"
+	defaultBarcodeTTL            = 30 * 24 * time.Hour
 )
 
 type BarcodeLookupResult struct {
@@ -33,21 +35,36 @@ type BarcodeLookupResult struct {
 }
 
 type barcodeClient interface {
-	LookupBarcode(ctx context.Context, barcode string) (usda.FoodLookup, []byte, error)
+	LookupBarcode(ctx context.Context, barcode string) (BarcodeLookupResult, []byte, error)
 }
 
 func LookupBarcodeUSDA(db *sql.DB, apiKey, barcode string) (BarcodeLookupResult, error) {
-	client := &usda.Client{APIKey: apiKey}
-	return lookupBarcodeWithClient(db, client, barcode)
+	return LookupBarcode(db, BarcodeProviderUSDA, apiKey, barcode)
 }
 
-func lookupBarcodeWithClient(db *sql.DB, client barcodeClient, barcode string) (BarcodeLookupResult, error) {
+func LookupBarcodeOpenFoodFacts(db *sql.DB, barcode string) (BarcodeLookupResult, error) {
+	return LookupBarcode(db, BarcodeProviderOpenFoodFacts, "", barcode)
+}
+
+func LookupBarcode(db *sql.DB, provider, apiKey, barcode string) (BarcodeLookupResult, error) {
+	p := strings.ToLower(strings.TrimSpace(provider))
+	switch p {
+	case "", BarcodeProviderUSDA:
+		return lookupBarcodeWithClient(db, BarcodeProviderUSDA, &usdaClientAdapter{client: &usda.Client{APIKey: apiKey}}, barcode)
+	case BarcodeProviderOpenFoodFacts, "off":
+		return lookupBarcodeWithClient(db, BarcodeProviderOpenFoodFacts, &openFoodFactsClientAdapter{client: &openfoodfacts.Client{}}, barcode)
+	default:
+		return BarcodeLookupResult{}, fmt.Errorf("unsupported barcode provider %q", provider)
+	}
+}
+
+func lookupBarcodeWithClient(db *sql.DB, provider string, client barcodeClient, barcode string) (BarcodeLookupResult, error) {
 	barcode = strings.TrimSpace(barcode)
 	if !isValidBarcode(barcode) {
 		return BarcodeLookupResult{}, fmt.Errorf("invalid barcode %q (expected 8-14 digits)", barcode)
 	}
 
-	cached, found, err := lookupBarcodeCache(db, barcodeProviderUSDA, barcode)
+	cached, found, err := lookupBarcodeCache(db, provider, barcode)
 	if err != nil {
 		return BarcodeLookupResult{}, err
 	}
@@ -58,13 +75,28 @@ func lookupBarcodeWithClient(db *sql.DB, client barcodeClient, barcode string) (
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	food, raw, err := client.LookupBarcode(ctx, barcode)
+	result, raw, err := client.LookupBarcode(ctx, barcode)
 	if err != nil {
 		return BarcodeLookupResult{}, err
 	}
-	result := BarcodeLookupResult{
-		Provider:      barcodeProviderUSDA,
-		Barcode:       barcode,
+	result.Provider = provider
+	result.Barcode = barcode
+	if err := upsertBarcodeCache(db, result, raw, time.Now().Add(defaultBarcodeTTL)); err != nil {
+		return BarcodeLookupResult{}, err
+	}
+	return result, nil
+}
+
+type usdaClientAdapter struct {
+	client *usda.Client
+}
+
+func (a *usdaClientAdapter) LookupBarcode(ctx context.Context, barcode string) (BarcodeLookupResult, []byte, error) {
+	food, raw, err := a.client.LookupBarcode(ctx, barcode)
+	if err != nil {
+		return BarcodeLookupResult{}, nil, err
+	}
+	return BarcodeLookupResult{
 		Description:   food.Description,
 		Brand:         food.Brand,
 		ServingAmount: food.ServingAmount,
@@ -74,11 +106,29 @@ func lookupBarcodeWithClient(db *sql.DB, client barcodeClient, barcode string) (
 		CarbsG:        food.CarbsG,
 		FatG:          food.FatG,
 		SourceID:      food.FDCID,
+	}, raw, nil
+}
+
+type openFoodFactsClientAdapter struct {
+	client *openfoodfacts.Client
+}
+
+func (a *openFoodFactsClientAdapter) LookupBarcode(ctx context.Context, barcode string) (BarcodeLookupResult, []byte, error) {
+	food, raw, err := a.client.LookupBarcode(ctx, barcode)
+	if err != nil {
+		return BarcodeLookupResult{}, nil, err
 	}
-	if err := upsertBarcodeCache(db, result, raw, time.Now().Add(defaultBarcodeTTL)); err != nil {
-		return BarcodeLookupResult{}, err
-	}
-	return result, nil
+	return BarcodeLookupResult{
+		Description:   food.Description,
+		Brand:         food.Brand,
+		ServingAmount: food.ServingAmount,
+		ServingUnit:   food.ServingUnit,
+		Calories:      food.Calories,
+		ProteinG:      food.ProteinG,
+		CarbsG:        food.CarbsG,
+		FatG:          food.FatG,
+		SourceID:      food.SourceID,
+	}, raw, nil
 }
 
 func isValidBarcode(code string) bool {
