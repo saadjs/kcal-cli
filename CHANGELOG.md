@@ -16,4 +16,4 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - Body-goal tracking (`kcal body-goal`) with effective-date versioning.
 - Ingredient-level recipe builder (`kcal recipe ingredient ...`) and recipe total recalculation (`kcal recipe recalc`).
 - Extended analytics body section with weight/body-fat/lean-mass trends and body-goal progress.
-- Multi-provider barcode lookup (`usda`, `openfoodfacts`) with local SQLite cache, provider selection, setup helper commands, and local barcode nutrition overrides.
+- Multi-provider barcode lookup (`usda`, `openfoodfacts`, `upcitemdb`) with local SQLite cache, provider selection, setup helper commands, published UPCitemdb plan-limit guidance, and local barcode nutrition overrides.

@@ -48,10 +48,11 @@ go build -o kcal .
 - `kcal recipe add|list|show|update|delete|log|recalc`
 - `kcal recipe ingredient add|list|update|delete`
 - `kcal analytics week|month|range`
-- `kcal lookup barcode <code> [--provider usda|openfoodfacts] [--api-key ...] [--json]`
+- `kcal lookup barcode <code> [--provider usda|openfoodfacts|upcitemdb] [--api-key ...] [--json]`
 - `kcal lookup providers`
 - `kcal lookup usda-help`
 - `kcal lookup openfoodfacts-help`
+- `kcal lookup upcitemdb-help`
 - `kcal lookup override set|show|list|delete ...`
 
 Use `--help` on any command for details.
@@ -62,6 +63,7 @@ Use `--help` on any command for details.
 export KCAL_USDA_API_KEY=your_key_here
 ./kcal lookup barcode 012345678905 --provider usda
 ./kcal lookup barcode 3017620422003 --provider openfoodfacts
+./kcal lookup barcode 012993441012 --provider upcitemdb
 ./kcal lookup providers
 ```
 
@@ -69,11 +71,13 @@ API key resolution order:
 - `--api-key` flag
 - `KCAL_USDA_API_KEY`
 - `KCAL_BARCODE_API_KEY` (legacy fallback)
-- Provider default can be set with `KCAL_BARCODE_PROVIDER` (`usda` or `openfoodfacts`)
+- `KCAL_UPCITEMDB_API_KEY` (optional for UPCitemdb paid plans)
+- Provider default can be set with `KCAL_BARCODE_PROVIDER` (`usda`, `openfoodfacts`, or `upcitemdb`)
 
 Rate limit note:
 - USDA default limit is `1,000 requests/hour/IP`.
 - Open Food Facts uses fair-use limits and requires a descriptive user-agent.
+- UPCitemdb published plan examples: Trial `100/day`, DEV `20,000 lookup/day + 2,000 search/day`, PRO `150,000 lookup/day + 20,000 search/day`.
 - `kcal` caches barcode lookups in SQLite to reduce repeated provider calls.
 
 Local correction workflow:

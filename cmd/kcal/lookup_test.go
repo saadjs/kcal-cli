@@ -64,6 +64,32 @@ func TestOpenFoodFactsHelpTextIncludesDocsAndRateLimit(t *testing.T) {
 	}
 }
 
+func TestUPCItemDBHelpTextIncludesPlanLimits(t *testing.T) {
+	out := upcItemDBHelpText()
+	if !containsAll(out, []string{
+		"devs.upcitemdb.com",
+		"100 requests/day",
+		"20,000 lookup/day",
+		"150,000 lookup/day",
+	}) {
+		t.Fatalf("upcitemdb help text missing expected plan limit guidance: %s", out)
+	}
+}
+
+func TestResolveUPCItemDBKeyType(t *testing.T) {
+	t.Setenv("KCAL_UPCITEMDB_KEY_TYPE", "")
+	if got := resolveProviderAPIKeyType("upcitemdb", ""); got != "3scale" {
+		t.Fatalf("expected default key type 3scale, got %q", got)
+	}
+	t.Setenv("KCAL_UPCITEMDB_KEY_TYPE", "apikey")
+	if got := resolveProviderAPIKeyType("upcitemdb", ""); got != "apikey" {
+		t.Fatalf("expected env key type apikey, got %q", got)
+	}
+	if got := resolveProviderAPIKeyType("upcitemdb", "custom"); got != "custom" {
+		t.Fatalf("expected flag key type custom, got %q", got)
+	}
+}
+
 func containsAll(s string, parts []string) bool {
 	for _, p := range parts {
 		if !strings.Contains(s, p) {
