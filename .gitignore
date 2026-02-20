@@ -1,6 +1,7 @@
 # Local environment files
 .env
 .env.*
+RELEASE_CHECKLIST.md
 
 # Local project binary
 /kcal
