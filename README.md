@@ -54,6 +54,8 @@ Top-level commands:
 - `init`
 - `lookup`
 - `recipe`
+- `saved-food`
+- `saved-meal`
 - `today`
 
 Use `kcal <command> --help` for command flags and subcommands.

@@ -28,6 +28,8 @@ When to use this page:
 - `init`
 - `lookup`
 - `recipe`
+- `saved-food`
+- `saved-meal`
 - `today`
 
 ## Nutrition Logging
@@ -69,6 +71,21 @@ kcal recipe add --name "Overnight oats" --calories 0 --protein 0 --carbs 0 --fat
 kcal recipe ingredient add "Overnight oats" --name Oats --amount 40 --unit g --calories 150 --protein 5 --carbs 27 --fat 3
 kcal recipe recalc "Overnight oats"
 kcal recipe log "Overnight oats" --servings 1 --category breakfast
+```
+
+## Saved Templates
+
+- `kcal saved-food add|add-from-entry|add-from-barcode|list|show|update|archive|restore|log`
+- `kcal saved-meal add|add-from-entry|list|show|update|archive|restore|log`
+- `kcal saved-meal component add|list|update|delete`
+
+Example:
+
+```bash
+kcal saved-food add --name "Greek Yogurt" --calories 150 --protein 15 --carbs 10 --fat 5 --category breakfast
+kcal saved-meal add --name "Yogurt bowl" --category breakfast
+kcal saved-meal component add "Yogurt bowl" --saved-food "Greek Yogurt"
+kcal saved-meal log "Yogurt bowl" --servings 1
 ```
 
 ## Analytics
