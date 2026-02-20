@@ -147,6 +147,28 @@ CREATE TABLE IF NOT EXISTS barcode_cache (
 );
 `,
 	},
+	{
+		version: 5,
+		name:    "barcode_overrides",
+		sql: `
+CREATE TABLE IF NOT EXISTS barcode_overrides (
+  provider TEXT NOT NULL,
+  barcode TEXT NOT NULL,
+  description TEXT NOT NULL,
+  brand TEXT NOT NULL DEFAULT '',
+  serving_amount REAL NOT NULL CHECK(serving_amount > 0),
+  serving_unit TEXT NOT NULL,
+  calories REAL NOT NULL DEFAULT 0 CHECK(calories >= 0),
+  protein_g REAL NOT NULL DEFAULT 0 CHECK(protein_g >= 0),
+  carbs_g REAL NOT NULL DEFAULT 0 CHECK(carbs_g >= 0),
+  fat_g REAL NOT NULL DEFAULT 0 CHECK(fat_g >= 0),
+  source_id INTEGER NOT NULL DEFAULT 0,
+  notes TEXT NOT NULL DEFAULT '',
+  updated_at DATETIME NOT NULL,
+  PRIMARY KEY(provider, barcode)
+);
+`,
+	},
 }
 
 var defaultCategories = []string{"breakfast", "lunch", "dinner", "snacks"}

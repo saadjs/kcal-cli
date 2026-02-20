@@ -31,7 +31,20 @@ type BarcodeLookupResult struct {
 	CarbsG        float64 `json:"carbs_g"`
 	FatG          float64 `json:"fat_g"`
 	SourceID      int64   `json:"source_id"`
+	FromOverride  bool    `json:"from_override"`
 	FromCache     bool    `json:"from_cache"`
+}
+
+type BarcodeOverrideInput struct {
+	Description   string
+	Brand         string
+	ServingAmount float64
+	ServingUnit   string
+	Calories      float64
+	ProteinG      float64
+	CarbsG        float64
+	FatG          float64
+	Notes         string
 }
 
 type barcodeClient interface {
@@ -62,6 +75,14 @@ func lookupBarcodeWithClient(db *sql.DB, provider string, client barcodeClient, 
 	barcode = strings.TrimSpace(barcode)
 	if !isValidBarcode(barcode) {
 		return BarcodeLookupResult{}, fmt.Errorf("invalid barcode %q (expected 8-14 digits)", barcode)
+	}
+	overridden, found, err := lookupBarcodeOverride(db, provider, barcode)
+	if err != nil {
+		return BarcodeLookupResult{}, err
+	}
+	if found {
+		overridden.FromOverride = true
+		return overridden, nil
 	}
 
 	cached, found, err := lookupBarcodeCache(db, provider, barcode)
@@ -190,4 +211,135 @@ ON CONFLICT(provider, barcode) DO UPDATE SET
 		return fmt.Errorf("upsert barcode cache: %w", err)
 	}
 	return nil
+}
+
+func SetBarcodeOverride(db *sql.DB, provider, barcode string, in BarcodeOverrideInput) error {
+	provider = normalizeBarcodeProvider(provider)
+	barcode = strings.TrimSpace(barcode)
+	if !isValidBarcode(barcode) {
+		return fmt.Errorf("invalid barcode %q (expected 8-14 digits)", barcode)
+	}
+	if provider == "" {
+		return fmt.Errorf("provider is required")
+	}
+	if strings.TrimSpace(in.Description) == "" {
+		return fmt.Errorf("description is required")
+	}
+	if in.ServingAmount <= 0 {
+		return fmt.Errorf("serving amount must be > 0")
+	}
+	if strings.TrimSpace(in.ServingUnit) == "" {
+		return fmt.Errorf("serving unit is required")
+	}
+	if in.Calories < 0 || in.ProteinG < 0 || in.CarbsG < 0 || in.FatG < 0 {
+		return fmt.Errorf("calories and macros must be >= 0")
+	}
+
+	_, err := db.Exec(`
+INSERT INTO barcode_overrides(provider, barcode, description, brand, serving_amount, serving_unit, calories, protein_g, carbs_g, fat_g, notes, updated_at)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(provider, barcode) DO UPDATE SET
+  description=excluded.description,
+  brand=excluded.brand,
+  serving_amount=excluded.serving_amount,
+  serving_unit=excluded.serving_unit,
+  calories=excluded.calories,
+  protein_g=excluded.protein_g,
+  carbs_g=excluded.carbs_g,
+  fat_g=excluded.fat_g,
+  notes=excluded.notes,
+  updated_at=excluded.updated_at
+`, provider, barcode, strings.TrimSpace(in.Description), strings.TrimSpace(in.Brand), in.ServingAmount, strings.TrimSpace(in.ServingUnit), in.Calories, in.ProteinG, in.CarbsG, in.FatG, strings.TrimSpace(in.Notes), time.Now().Format(time.RFC3339))
+	if err != nil {
+		return fmt.Errorf("set barcode override: %w", err)
+	}
+	return nil
+}
+
+func GetBarcodeOverride(db *sql.DB, provider, barcode string) (BarcodeLookupResult, bool, error) {
+	provider = normalizeBarcodeProvider(provider)
+	return lookupBarcodeOverride(db, provider, strings.TrimSpace(barcode))
+}
+
+func DeleteBarcodeOverride(db *sql.DB, provider, barcode string) error {
+	provider = normalizeBarcodeProvider(provider)
+	barcode = strings.TrimSpace(barcode)
+	res, err := db.Exec(`DELETE FROM barcode_overrides WHERE provider = ? AND barcode = ?`, provider, barcode)
+	if err != nil {
+		return fmt.Errorf("delete barcode override: %w", err)
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("delete barcode override rows affected: %w", err)
+	}
+	if affected == 0 {
+		return fmt.Errorf("barcode override not found for provider=%s barcode=%s", provider, barcode)
+	}
+	return nil
+}
+
+func ListBarcodeOverrides(db *sql.DB, provider string, limit int) ([]BarcodeLookupResult, error) {
+	provider = normalizeBarcodeProvider(provider)
+	if limit <= 0 {
+		limit = 100
+	}
+	base := `
+SELECT provider, barcode, description, brand, serving_amount, serving_unit, calories, protein_g, carbs_g, fat_g, source_id
+FROM barcode_overrides`
+	args := make([]any, 0, 2)
+	if provider != "" {
+		base += ` WHERE provider = ?`
+		args = append(args, provider)
+	}
+	base += ` ORDER BY updated_at DESC LIMIT ?`
+	args = append(args, limit)
+	rows, err := db.Query(base, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list barcode overrides: %w", err)
+	}
+	defer rows.Close()
+	out := make([]BarcodeLookupResult, 0)
+	for rows.Next() {
+		var r BarcodeLookupResult
+		if err := rows.Scan(&r.Provider, &r.Barcode, &r.Description, &r.Brand, &r.ServingAmount, &r.ServingUnit, &r.Calories, &r.ProteinG, &r.CarbsG, &r.FatG, &r.SourceID); err != nil {
+			return nil, fmt.Errorf("scan barcode override: %w", err)
+		}
+		r.FromOverride = true
+		out = append(out, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate barcode overrides: %w", err)
+	}
+	return out, nil
+}
+
+func lookupBarcodeOverride(db *sql.DB, provider, barcode string) (BarcodeLookupResult, bool, error) {
+	var row BarcodeLookupResult
+	err := db.QueryRow(`
+SELECT provider, barcode, description, brand, serving_amount, serving_unit, calories, protein_g, carbs_g, fat_g, source_id
+FROM barcode_overrides
+WHERE provider = ? AND barcode = ?
+`, provider, barcode).Scan(
+		&row.Provider, &row.Barcode, &row.Description, &row.Brand,
+		&row.ServingAmount, &row.ServingUnit,
+		&row.Calories, &row.ProteinG, &row.CarbsG, &row.FatG,
+		&row.SourceID,
+	)
+	if err == sql.ErrNoRows {
+		return BarcodeLookupResult{}, false, nil
+	}
+	if err != nil {
+		return BarcodeLookupResult{}, false, fmt.Errorf("lookup barcode override: %w", err)
+	}
+	return row, true, nil
+}
+
+func normalizeBarcodeProvider(provider string) string {
+	p := strings.ToLower(strings.TrimSpace(provider))
+	switch p {
+	case "off":
+		return BarcodeProviderOpenFoodFacts
+	default:
+		return p
+	}
 }

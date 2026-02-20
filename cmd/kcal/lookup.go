@@ -28,6 +28,16 @@ var (
 	lookupProvider string
 	lookupAPIKey   string
 	lookupJSON     bool
+	overrideName   string
+	overrideBrand  string
+	overrideAmount float64
+	overrideUnit   string
+	overrideKcal   float64
+	overrideP      float64
+	overrideC      float64
+	overrideF      float64
+	overrideNotes  string
+	overrideLimit  int
 )
 
 var lookupBarcodeCmd = &cobra.Command{
@@ -55,7 +65,9 @@ var lookupBarcodeCmd = &cobra.Command{
 				return nil
 			}
 			source := "live"
-			if result.FromCache {
+			if result.FromOverride {
+				source = "override"
+			} else if result.FromCache {
 				source = "cache"
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Provider: %s (%s)\n", result.Provider, source)
@@ -64,6 +76,112 @@ var lookupBarcodeCmd = &cobra.Command{
 			fmt.Fprintf(cmd.OutOrStdout(), "Brand: %s\n", result.Brand)
 			fmt.Fprintf(cmd.OutOrStdout(), "Serving: %.2f %s\n", result.ServingAmount, result.ServingUnit)
 			fmt.Fprintf(cmd.OutOrStdout(), "Calories: %.1f\nProtein: %.1fg\nCarbs: %.1fg\nFat: %.1fg\n", result.Calories, result.ProteinG, result.CarbsG, result.FatG)
+			return nil
+		})
+	},
+}
+
+var lookupOverrideCmd = &cobra.Command{
+	Use:   "override",
+	Short: "Manage local barcode nutrition overrides",
+}
+
+var lookupOverrideSetCmd = &cobra.Command{
+	Use:   "set <barcode>",
+	Short: "Set or update local override for a barcode",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		provider := resolveBarcodeProvider(lookupProvider)
+		in := service.BarcodeOverrideInput{
+			Description:   overrideName,
+			Brand:         overrideBrand,
+			ServingAmount: overrideAmount,
+			ServingUnit:   overrideUnit,
+			Calories:      overrideKcal,
+			ProteinG:      overrideP,
+			CarbsG:        overrideC,
+			FatG:          overrideF,
+			Notes:         overrideNotes,
+		}
+		return withDB(func(sqldb *sql.DB) error {
+			if err := service.SetBarcodeOverride(sqldb, provider, args[0], in); err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Set override for %s (%s)\n", args[0], provider)
+			return nil
+		})
+	},
+}
+
+var lookupOverrideShowCmd = &cobra.Command{
+	Use:   "show <barcode>",
+	Short: "Show local override for a barcode",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		provider := resolveBarcodeProvider(lookupProvider)
+		return withDB(func(sqldb *sql.DB) error {
+			result, found, err := service.GetBarcodeOverride(sqldb, provider, args[0])
+			if err != nil {
+				return err
+			}
+			if !found {
+				return fmt.Errorf("no override found for %s (%s)", args[0], provider)
+			}
+			if lookupJSON {
+				b, err := json.MarshalIndent(result, "", "  ")
+				if err != nil {
+					return fmt.Errorf("marshal override json: %w", err)
+				}
+				fmt.Fprintln(cmd.OutOrStdout(), string(b))
+				return nil
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Provider: %s\nBarcode: %s\nFood: %s\nBrand: %s\nServing: %.2f %s\nCalories: %.1f\nProtein: %.1fg\nCarbs: %.1fg\nFat: %.1fg\n", result.Provider, result.Barcode, result.Description, result.Brand, result.ServingAmount, result.ServingUnit, result.Calories, result.ProteinG, result.CarbsG, result.FatG)
+			return nil
+		})
+	},
+}
+
+var lookupOverrideDeleteCmd = &cobra.Command{
+	Use:   "delete <barcode>",
+	Short: "Delete local override for a barcode",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		provider := resolveBarcodeProvider(lookupProvider)
+		return withDB(func(sqldb *sql.DB) error {
+			if err := service.DeleteBarcodeOverride(sqldb, provider, args[0]); err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Deleted override for %s (%s)\n", args[0], provider)
+			return nil
+		})
+	},
+}
+
+var lookupOverrideListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List barcode overrides",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		provider := strings.ToLower(strings.TrimSpace(lookupProvider))
+		if provider == "" {
+			provider = ""
+		}
+		return withDB(func(sqldb *sql.DB) error {
+			items, err := service.ListBarcodeOverrides(sqldb, provider, overrideLimit)
+			if err != nil {
+				return err
+			}
+			if lookupJSON {
+				b, err := json.MarshalIndent(items, "", "  ")
+				if err != nil {
+					return fmt.Errorf("marshal override list json: %w", err)
+				}
+				fmt.Fprintln(cmd.OutOrStdout(), string(b))
+				return nil
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "PROVIDER\tBARCODE\tNAME\tKCAL\tP\tC\tF")
+			for _, it := range items {
+				fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\t%s\t%.1f\t%.1f\t%.1f\t%.1f\n", it.Provider, it.Barcode, it.Description, it.Calories, it.ProteinG, it.CarbsG, it.FatG)
+			}
 			return nil
 		})
 	},
@@ -132,7 +250,8 @@ func providersHelpText() string {
 Useful commands:
 - kcal lookup usda-help
 - kcal lookup openfoodfacts-help
-- kcal lookup barcode <code> --provider usda|openfoodfacts`
+- kcal lookup barcode <code> --provider usda|openfoodfacts
+- kcal lookup override set|show|list|delete ...`
 }
 
 func resolveUSDAAPIKey(flagValue string) string {
@@ -184,9 +303,33 @@ var lookupOpenFoodFactsHelpCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(lookupCmd)
-	lookupCmd.AddCommand(lookupBarcodeCmd, lookupProvidersCmd, lookupUSDAHelpCmd, lookupOpenFoodFactsHelpCmd)
+	lookupCmd.AddCommand(lookupBarcodeCmd, lookupProvidersCmd, lookupUSDAHelpCmd, lookupOpenFoodFactsHelpCmd, lookupOverrideCmd)
+	lookupOverrideCmd.AddCommand(lookupOverrideSetCmd, lookupOverrideShowCmd, lookupOverrideListCmd, lookupOverrideDeleteCmd)
 
 	lookupBarcodeCmd.Flags().StringVar(&lookupProvider, "provider", "", "Barcode provider: usda or openfoodfacts (or set KCAL_BARCODE_PROVIDER)")
 	lookupBarcodeCmd.Flags().StringVar(&lookupAPIKey, "api-key", "", "USDA API key (fallback: KCAL_USDA_API_KEY)")
 	lookupBarcodeCmd.Flags().BoolVar(&lookupJSON, "json", false, "Output as JSON")
+
+	for _, c := range []*cobra.Command{lookupOverrideSetCmd, lookupOverrideShowCmd, lookupOverrideListCmd, lookupOverrideDeleteCmd} {
+		c.Flags().StringVar(&lookupProvider, "provider", "", "Barcode provider: usda or openfoodfacts (default from KCAL_BARCODE_PROVIDER/usda)")
+		c.Flags().BoolVar(&lookupJSON, "json", false, "Output as JSON")
+	}
+	lookupOverrideSetCmd.Flags().StringVar(&overrideName, "name", "", "Food name")
+	lookupOverrideSetCmd.Flags().StringVar(&overrideBrand, "brand", "", "Brand")
+	lookupOverrideSetCmd.Flags().Float64Var(&overrideAmount, "serving-amount", 0, "Serving amount")
+	lookupOverrideSetCmd.Flags().StringVar(&overrideUnit, "serving-unit", "", "Serving unit")
+	lookupOverrideSetCmd.Flags().Float64Var(&overrideKcal, "calories", 0, "Calories")
+	lookupOverrideSetCmd.Flags().Float64Var(&overrideP, "protein", 0, "Protein grams")
+	lookupOverrideSetCmd.Flags().Float64Var(&overrideC, "carbs", 0, "Carbs grams")
+	lookupOverrideSetCmd.Flags().Float64Var(&overrideF, "fat", 0, "Fat grams")
+	lookupOverrideSetCmd.Flags().StringVar(&overrideNotes, "notes", "", "Override notes")
+	_ = lookupOverrideSetCmd.MarkFlagRequired("name")
+	_ = lookupOverrideSetCmd.MarkFlagRequired("serving-amount")
+	_ = lookupOverrideSetCmd.MarkFlagRequired("serving-unit")
+	_ = lookupOverrideSetCmd.MarkFlagRequired("calories")
+	_ = lookupOverrideSetCmd.MarkFlagRequired("protein")
+	_ = lookupOverrideSetCmd.MarkFlagRequired("carbs")
+	_ = lookupOverrideSetCmd.MarkFlagRequired("fat")
+
+	lookupOverrideListCmd.Flags().IntVar(&overrideLimit, "limit", 100, "Max overrides to return")
 }
