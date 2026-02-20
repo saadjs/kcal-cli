@@ -148,6 +148,13 @@ var (
 	ingredientProtein  float64
 	ingredientCarbs    float64
 	ingredientFat      float64
+	refAmount          float64
+	refUnit            string
+	refCalories        int
+	refProtein         float64
+	refCarbs           float64
+	refFat             float64
+	densityGPerML      float64
 )
 
 var recipeIngredientAddCmd = &cobra.Command{
@@ -155,14 +162,9 @@ var recipeIngredientAddCmd = &cobra.Command{
 	Short: "Add ingredient to recipe",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		in := service.RecipeIngredientInput{
-			Name:       ingredientName,
-			Amount:     ingredientAmount,
-			AmountUnit: ingredientUnit,
-			Calories:   ingredientCalories,
-			ProteinG:   ingredientProtein,
-			CarbsG:     ingredientCarbs,
-			FatG:       ingredientFat,
+		in, err := buildRecipeIngredientInput(cmd)
+		if err != nil {
+			return err
 		}
 		return withDB(func(sqldb *sql.DB) error {
 			id, err := service.AddRecipeIngredient(sqldb, args[0], in)
@@ -203,14 +205,9 @@ var recipeIngredientUpdateCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		in := service.RecipeIngredientInput{
-			Name:       ingredientName,
-			Amount:     ingredientAmount,
-			AmountUnit: ingredientUnit,
-			Calories:   ingredientCalories,
-			ProteinG:   ingredientProtein,
-			CarbsG:     ingredientCarbs,
-			FatG:       ingredientFat,
+		in, err := buildRecipeIngredientInput(cmd)
+		if err != nil {
+			return err
 		}
 		return withDB(func(sqldb *sql.DB) error {
 			if err := service.UpdateRecipeIngredient(sqldb, id, in); err != nil {
@@ -286,6 +283,72 @@ func bindRecipeFields(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&recipeNotes, "notes", "", "Recipe notes")
 }
 
+func buildRecipeIngredientInput(cmd *cobra.Command) (service.RecipeIngredientInput, error) {
+	manualInput := service.RecipeIngredientInput{
+		Name:       ingredientName,
+		Amount:     ingredientAmount,
+		AmountUnit: ingredientUnit,
+		Calories:   ingredientCalories,
+		ProteinG:   ingredientProtein,
+		CarbsG:     ingredientCarbs,
+		FatG:       ingredientFat,
+	}
+
+	hasRefMode := cmd.Flags().Changed("ref-amount") ||
+		cmd.Flags().Changed("ref-unit") ||
+		cmd.Flags().Changed("ref-calories") ||
+		cmd.Flags().Changed("ref-protein") ||
+		cmd.Flags().Changed("ref-carbs") ||
+		cmd.Flags().Changed("ref-fat")
+
+	if !hasRefMode {
+		if !cmd.Flags().Changed("calories") ||
+			!cmd.Flags().Changed("protein") ||
+			!cmd.Flags().Changed("carbs") ||
+			!cmd.Flags().Changed("fat") {
+			return service.RecipeIngredientInput{}, fmt.Errorf("manual mode requires --calories --protein --carbs --fat")
+		}
+		return manualInput, nil
+	}
+
+	if cmd.Flags().Changed("calories") ||
+		cmd.Flags().Changed("protein") ||
+		cmd.Flags().Changed("carbs") ||
+		cmd.Flags().Changed("fat") {
+		return service.RecipeIngredientInput{}, fmt.Errorf("cannot combine manual macro flags with reference scaling flags")
+	}
+
+	if !cmd.Flags().Changed("ref-amount") ||
+		!cmd.Flags().Changed("ref-unit") ||
+		!cmd.Flags().Changed("ref-calories") ||
+		!cmd.Flags().Changed("ref-protein") ||
+		!cmd.Flags().Changed("ref-carbs") ||
+		!cmd.Flags().Changed("ref-fat") {
+		return service.RecipeIngredientInput{}, fmt.Errorf("reference mode requires --ref-amount --ref-unit --ref-calories --ref-protein --ref-carbs --ref-fat")
+	}
+
+	scaled, err := service.ScaleIngredientMacros(service.ScaleIngredientMacrosInput{
+		Amount:      ingredientAmount,
+		Unit:        ingredientUnit,
+		RefAmount:   refAmount,
+		RefUnit:     refUnit,
+		RefCalories: refCalories,
+		RefProteinG: refProtein,
+		RefCarbsG:   refCarbs,
+		RefFatG:     refFat,
+		DensityGML:  densityGPerML,
+	})
+	if err != nil {
+		return service.RecipeIngredientInput{}, err
+	}
+
+	manualInput.Calories = scaled.Calories
+	manualInput.ProteinG = scaled.ProteinG
+	manualInput.CarbsG = scaled.CarbsG
+	manualInput.FatG = scaled.FatG
+	return manualInput, nil
+}
+
 func init() {
 	rootCmd.AddCommand(recipeCmd)
 	recipeCmd.AddCommand(recipeAddCmd, recipeListCmd, recipeShowCmd, recipeUpdateCmd, recipeDeleteCmd, recipeRecalcCmd, recipeLogCmd, recipeIngredientCmd)
@@ -323,12 +386,15 @@ func init() {
 		c.Flags().Float64Var(&ingredientProtein, "protein", 0, "Ingredient protein grams")
 		c.Flags().Float64Var(&ingredientCarbs, "carbs", 0, "Ingredient carbs grams")
 		c.Flags().Float64Var(&ingredientFat, "fat", 0, "Ingredient fat grams")
+		c.Flags().Float64Var(&refAmount, "ref-amount", 0, "Reference amount used for scaling")
+		c.Flags().StringVar(&refUnit, "ref-unit", "", "Reference unit used for scaling")
+		c.Flags().IntVar(&refCalories, "ref-calories", 0, "Reference calories for ref amount")
+		c.Flags().Float64Var(&refProtein, "ref-protein", 0, "Reference protein grams for ref amount")
+		c.Flags().Float64Var(&refCarbs, "ref-carbs", 0, "Reference carbs grams for ref amount")
+		c.Flags().Float64Var(&refFat, "ref-fat", 0, "Reference fat grams for ref amount")
+		c.Flags().Float64Var(&densityGPerML, "density-g-per-ml", 0, "Density for mass/volume conversion when scaling")
 		_ = c.MarkFlagRequired("name")
 		_ = c.MarkFlagRequired("amount")
 		_ = c.MarkFlagRequired("unit")
-		_ = c.MarkFlagRequired("calories")
-		_ = c.MarkFlagRequired("protein")
-		_ = c.MarkFlagRequired("carbs")
-		_ = c.MarkFlagRequired("fat")
 	}
 }
