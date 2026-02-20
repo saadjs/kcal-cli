@@ -44,6 +44,24 @@ func runKcal(t *testing.T, binPath, dbPath string, args ...string) (string, stri
 	return stdout.String(), stderr.String(), exitErr.ExitCode()
 }
 
+func runKcalRaw(t *testing.T, binPath string, args ...string) (string, string, int) {
+	t.Helper()
+	cmd := exec.Command(binPath, args...)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	if err == nil {
+		return stdout.String(), stderr.String(), 0
+	}
+	exitErr, ok := err.(*exec.ExitError)
+	if !ok {
+		t.Fatalf("run kcal command: %v", err)
+	}
+	return stdout.String(), stderr.String(), exitErr.ExitCode()
+}
+
 func initDB(t *testing.T, binPath, dbPath string) {
 	t.Helper()
 	_, stderr, exit := runKcal(t, binPath, dbPath, "init")
@@ -251,6 +269,29 @@ func TestCLIExerciseAddAllowsNoDistance(t *testing.T) {
 	)
 	if exit != 0 {
 		t.Fatalf("expected exercise add without distance to succeed: exit=%d stderr=%s", exit, stderr)
+	}
+}
+
+func TestCLIVersionCommandAndFlags(t *testing.T) {
+	binPath := buildKcalBinary(t)
+
+	for _, args := range [][]string{{"--version"}, {"-v"}, {"version"}} {
+		stdout, stderr, exit := runKcalRaw(t, binPath, args...)
+		if exit != 0 {
+			t.Fatalf("expected version call %v to succeed: exit=%d stderr=%s", args, exit, stderr)
+		}
+		if stderr != "" {
+			t.Fatalf("expected empty stderr for %v, got: %s", args, stderr)
+		}
+		if !strings.Contains(stdout, "kcal v1.1.0") {
+			t.Fatalf("expected version output for %v, got: %s", args, stdout)
+		}
+		if !strings.Contains(stdout, "commit:") {
+			t.Fatalf("expected commit field for %v, got: %s", args, stdout)
+		}
+		if !strings.Contains(stdout, "date:") {
+			t.Fatalf("expected date field for %v, got: %s", args, stdout)
+		}
 	}
 }
 

@@ -20,6 +20,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - Saved template database schema and model support for saved foods, saved meals, and saved meal components.
 - Saved template command families: `kcal saved-food ...` and `kcal saved-meal ...` (including create from entry/barcode, component management, archive/restore, and logging).
 - Saved templates included in JSON portability workflows (`kcal export --format json`, `kcal import --format json`), including coverage in portability tests.
+- Version metadata output via `kcal version`, `kcal -v`, and `kcal --version` (version tag, commit SHA, and build date).
 
 ### Changed
 - Consolidated GitHub Pages docs into a single-page experience at `docs/index.md` and removed legacy multi-page duplicates from publish paths.
