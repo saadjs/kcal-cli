@@ -204,3 +204,66 @@ func TestBarcodeOverrideIsUsedByLookup(t *testing.T) {
 		t.Fatalf("expected override nutrition output, got: %s", stdout)
 	}
 }
+
+func TestEntryAddWithBarcodeUsesOverrideAndServings(t *testing.T) {
+	binPath := buildKcalBinary(t)
+	dbPath := filepath.Join(t.TempDir(), "kcal.db")
+	initDB(t, binPath, dbPath)
+
+	_, stderr, exit := runKcal(t, binPath, dbPath, "lookup", "override", "set", "3017620422003",
+		"--provider", "openfoodfacts",
+		"--name", "Nutella Custom",
+		"--brand", "Ferrero",
+		"--serving-amount", "15",
+		"--serving-unit", "g",
+		"--calories", "100",
+		"--protein", "1",
+		"--carbs", "10",
+		"--fat", "6",
+	)
+	if exit != 0 {
+		t.Fatalf("set override failed: exit=%d stderr=%s", exit, stderr)
+	}
+
+	_, stderr, exit = runKcal(t, binPath, dbPath, "entry", "add",
+		"--barcode", "3017620422003",
+		"--provider", "openfoodfacts",
+		"--servings", "1.5",
+		"--category", "snacks",
+		"--date", "2026-02-20",
+		"--time", "12:00",
+	)
+	if exit != 0 {
+		t.Fatalf("entry add --barcode failed: exit=%d stderr=%s", exit, stderr)
+	}
+
+	stdout, stderr, exit := runKcal(t, binPath, dbPath, "entry", "list", "--date", "2026-02-20")
+	if exit != 0 {
+		t.Fatalf("entry list failed: exit=%d stderr=%s", exit, stderr)
+	}
+	if !strings.Contains(stdout, "barcode") {
+		t.Fatalf("expected barcode source in entry list, got: %s", stdout)
+	}
+	if !strings.Contains(stdout, "\t150\t") {
+		t.Fatalf("expected scaled calories 150 in entry list, got: %s", stdout)
+	}
+}
+
+func TestEntryAddBarcodeRejectsManualNutritionFlags(t *testing.T) {
+	binPath := buildKcalBinary(t)
+	dbPath := filepath.Join(t.TempDir(), "kcal.db")
+	initDB(t, binPath, dbPath)
+
+	_, stderr, exit := runKcal(t, binPath, dbPath, "entry", "add",
+		"--barcode", "3017620422003",
+		"--provider", "openfoodfacts",
+		"--name", "conflict",
+		"--category", "snacks",
+	)
+	if exit == 0 {
+		t.Fatalf("expected conflicting barcode/manual flags to fail")
+	}
+	if !strings.Contains(stderr, "cannot combine --barcode with manual nutrition flags") {
+		t.Fatalf("expected conflict validation error, got: %s", stderr)
+	}
+}

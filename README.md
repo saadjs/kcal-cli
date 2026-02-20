@@ -27,6 +27,7 @@ go build -o kcal .
 ./kcal body add --weight 172 --unit lb --body-fat 20 --date 2026-02-20 --time 07:00
 ./kcal category add supper
 ./kcal entry add --name "Chicken bowl" --calories 550 --protein 45 --carbs 40 --fat 18 --category supper
+./kcal entry add --barcode 3017620422003 --provider openfoodfacts --servings 1.5 --category snacks
 ./kcal recipe add --name "Overnight oats" --calories 0 --protein 0 --carbs 0 --fat 0 --servings 2
 ./kcal recipe ingredient add "Overnight oats" --name Oats --amount 40 --unit g --calories 150 --protein 5 --carbs 27 --fat 3
 ./kcal recipe ingredient add "Overnight oats" --name Milk --amount 200 --unit ml --calories 80 --protein 5 --carbs 10 --fat 2
