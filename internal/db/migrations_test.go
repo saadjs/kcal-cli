@@ -29,8 +29,16 @@ func TestApplyMigrationsIdempotentAndSeedsDefaults(t *testing.T) {
 	if err := sqldb.QueryRow(`SELECT COUNT(1) FROM schema_migrations`).Scan(&migrationCount); err != nil {
 		t.Fatalf("count migrations: %v", err)
 	}
-	if migrationCount != 5 {
-		t.Fatalf("expected 5 migration versions, got %d", migrationCount)
+	if migrationCount != 6 {
+		t.Fatalf("expected 6 migration versions, got %d", migrationCount)
+	}
+
+	var metadataColCount int
+	if err := sqldb.QueryRow(`SELECT COUNT(1) FROM pragma_table_info('entries') WHERE name = 'metadata_json'`).Scan(&metadataColCount); err != nil {
+		t.Fatalf("check entries metadata column: %v", err)
+	}
+	if metadataColCount != 1 {
+		t.Fatalf("expected metadata_json column in entries table")
 	}
 
 	var categoryCount int

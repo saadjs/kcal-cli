@@ -169,6 +169,13 @@ CREATE TABLE IF NOT EXISTS barcode_overrides (
 );
 `,
 	},
+	{
+		version: 6,
+		name:    "entry_metadata",
+		sql: `
+ALTER TABLE entries ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '';
+`,
+	},
 }
 
 var defaultCategories = []string{"breakfast", "lunch", "dinner", "snacks"}

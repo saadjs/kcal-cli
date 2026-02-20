@@ -22,6 +22,7 @@ type Entry struct {
 	Notes      string
 	SourceType string
 	SourceID   *int64
+	Metadata   string
 }
 
 type Goal struct {

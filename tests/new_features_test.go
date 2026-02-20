@@ -237,7 +237,7 @@ func TestEntryAddWithBarcodeUsesOverrideAndServings(t *testing.T) {
 		t.Fatalf("entry add --barcode failed: exit=%d stderr=%s", exit, stderr)
 	}
 
-	stdout, stderr, exit := runKcal(t, binPath, dbPath, "entry", "list", "--date", "2026-02-20")
+	stdout, stderr, exit := runKcal(t, binPath, dbPath, "entry", "list", "--date", "2026-02-20", "--with-metadata")
 	if exit != 0 {
 		t.Fatalf("entry list failed: exit=%d stderr=%s", exit, stderr)
 	}
@@ -246,6 +246,12 @@ func TestEntryAddWithBarcodeUsesOverrideAndServings(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "\t150\t") {
 		t.Fatalf("expected scaled calories 150 in entry list, got: %s", stdout)
+	}
+	if !strings.Contains(stdout, `"provider":"openfoodfacts"`) {
+		t.Fatalf("expected barcode provider metadata, got: %s", stdout)
+	}
+	if !strings.Contains(stdout, `"servings":1.5`) {
+		t.Fatalf("expected servings metadata, got: %s", stdout)
 	}
 }
 

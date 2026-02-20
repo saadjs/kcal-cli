@@ -2,6 +2,7 @@ package service
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -20,6 +21,7 @@ type CreateEntryInput struct {
 	Notes      string
 	SourceType string
 	SourceID   *int64
+	Metadata   string
 }
 
 type ListEntriesFilter struct {
@@ -69,11 +71,15 @@ func CreateEntry(db *sql.DB, in CreateEntryInput) (int64, error) {
 	if strings.TrimSpace(in.SourceType) == "" {
 		in.SourceType = "manual"
 	}
+	metadata, err := normalizeEntryMetadata(in.Metadata)
+	if err != nil {
+		return 0, err
+	}
 
 	res, err := db.Exec(`
-INSERT INTO entries(name, calories, protein_g, carbs_g, fat_g, category_id, consumed_at, notes, source_type, source_id)
-VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-`, in.Name, in.Calories, in.ProteinG, in.CarbsG, in.FatG, categoryID, in.Consumed.Format(time.RFC3339), strings.TrimSpace(in.Notes), in.SourceType, in.SourceID)
+INSERT INTO entries(name, calories, protein_g, carbs_g, fat_g, category_id, consumed_at, notes, source_type, source_id, metadata_json)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`, in.Name, in.Calories, in.ProteinG, in.CarbsG, in.FatG, categoryID, in.Consumed.Format(time.RFC3339), strings.TrimSpace(in.Notes), in.SourceType, in.SourceID, metadata)
 	if err != nil {
 		return 0, fmt.Errorf("insert entry: %w", err)
 	}
@@ -90,7 +96,7 @@ func ListEntries(db *sql.DB, f ListEntriesFilter) ([]model.Entry, error) {
 	}
 
 	query := `
-SELECT e.id, e.name, e.calories, e.protein_g, e.carbs_g, e.fat_g, e.category_id, c.name, e.consumed_at, IFNULL(e.notes, ''), e.source_type, e.source_id
+SELECT e.id, e.name, e.calories, e.protein_g, e.carbs_g, e.fat_g, e.category_id, c.name, e.consumed_at, IFNULL(e.notes, ''), e.source_type, e.source_id, IFNULL(e.metadata_json, '')
 FROM entries e
 JOIN categories c ON c.id = e.category_id
 WHERE 1=1`
@@ -143,7 +149,7 @@ WHERE 1=1`
 		var e model.Entry
 		var consumedAtRaw string
 		var sourceID sql.NullInt64
-		if err := rows.Scan(&e.ID, &e.Name, &e.Calories, &e.ProteinG, &e.CarbsG, &e.FatG, &e.CategoryID, &e.Category, &consumedAtRaw, &e.Notes, &e.SourceType, &sourceID); err != nil {
+		if err := rows.Scan(&e.ID, &e.Name, &e.Calories, &e.ProteinG, &e.CarbsG, &e.FatG, &e.CategoryID, &e.Category, &consumedAtRaw, &e.Notes, &e.SourceType, &sourceID, &e.Metadata); err != nil {
 			return nil, fmt.Errorf("scan entry: %w", err)
 		}
 		consumedAt, err := time.Parse(time.RFC3339, consumedAtRaw)
@@ -257,6 +263,25 @@ func parseDateEndExclusive(value string) (string, error) {
 		return "", fmt.Errorf("parse end date %q: %w", value, err)
 	}
 	return t.Add(24 * time.Hour).Format(time.RFC3339), nil
+}
+
+func normalizeEntryMetadata(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", nil
+	}
+	if !json.Valid([]byte(value)) {
+		return "", fmt.Errorf("entry metadata must be valid JSON")
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal([]byte(value), &decoded); err != nil {
+		return "", fmt.Errorf("entry metadata must be a JSON object: %w", err)
+	}
+	normalized, err := json.Marshal(decoded)
+	if err != nil {
+		return "", fmt.Errorf("marshal entry metadata: %w", err)
+	}
+	return string(normalized), nil
 }
 
 func validateListEntriesFilter(f ListEntriesFilter) error {

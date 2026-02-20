@@ -2,6 +2,7 @@ package kcal
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"math"
 	"strings"
@@ -33,6 +34,7 @@ var (
 	entryFallback      bool
 	entryFallbackOrder string
 	entryServings      float64
+	entryMetadata      string
 )
 
 var entryAddCmd = &cobra.Command{
@@ -64,6 +66,7 @@ var (
 	listToDate   string
 	listCategory string
 	listLimit    int
+	listMetadata bool
 )
 
 var entryListCmd = &cobra.Command{
@@ -82,8 +85,16 @@ var entryListCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), "ID\tDATE\tCATEGORY\tNAME\tKCAL\tP\tC\tF\tSOURCE")
+			header := "ID\tDATE\tCATEGORY\tNAME\tKCAL\tP\tC\tF\tSOURCE"
+			if listMetadata {
+				header += "\tMETADATA"
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), header)
 			for _, e := range entries {
+				if listMetadata {
+					fmt.Fprintf(cmd.OutOrStdout(), "%d\t%s\t%s\t%s\t%d\t%.1f\t%.1f\t%.1f\t%s\t%s\n", e.ID, e.ConsumedAt.Local().Format("2006-01-02 15:04"), e.Category, e.Name, e.Calories, e.ProteinG, e.CarbsG, e.FatG, e.SourceType, e.Metadata)
+					continue
+				}
 				fmt.Fprintf(cmd.OutOrStdout(), "%d\t%s\t%s\t%s\t%d\t%.1f\t%.1f\t%.1f\t%s\n", e.ID, e.ConsumedAt.Local().Format("2006-01-02 15:04"), e.Category, e.Name, e.Calories, e.ProteinG, e.CarbsG, e.FatG, e.SourceType)
 			}
 			return nil
@@ -174,6 +185,7 @@ func addEntryFields(cmd *cobra.Command, prefix string) {
 	cmd.Flags().BoolVar(&entryFallback, "fallback", true, "Try providers in fallback order when using --barcode")
 	cmd.Flags().StringVar(&entryFallbackOrder, "fallback-order", "", "Comma-separated fallback provider order")
 	cmd.Flags().Float64Var(&entryServings, "servings", 1, "Serving multiplier when logging by barcode")
+	cmd.Flags().StringVar(&entryMetadata, "metadata-json", "", "Optional metadata JSON object to attach to the entry")
 	_ = prefix
 }
 
@@ -195,6 +207,7 @@ func buildEntryAddInput(sqldb *sql.DB, consumed time.Time) (service.CreateEntryI
 			Consumed:   consumed,
 			Notes:      entryNotes,
 			SourceType: "manual",
+			Metadata:   entryMetadata,
 		}, nil
 	}
 
@@ -219,6 +232,10 @@ func buildEntryAddInput(sqldb *sql.DB, consumed time.Time) (service.CreateEntryI
 		v := result.SourceID
 		sourceID = &v
 	}
+	metadata, err := buildBarcodeEntryMetadata(result, entryServings, entryMetadata)
+	if err != nil {
+		return service.CreateEntryInput{}, err
+	}
 	return service.CreateEntryInput{
 		Name:       fmt.Sprintf("%s (barcode %s x%.2f)", result.Description, result.Barcode, entryServings),
 		Calories:   int(math.Round(result.Calories * entryServings)),
@@ -230,7 +247,48 @@ func buildEntryAddInput(sqldb *sql.DB, consumed time.Time) (service.CreateEntryI
 		Notes:      entryNotes,
 		SourceType: "barcode",
 		SourceID:   sourceID,
+		Metadata:   metadata,
 	}, nil
+}
+
+func buildBarcodeEntryMetadata(result service.BarcodeLookupResult, servings float64, userMetadata string) (string, error) {
+	metadata := map[string]any{
+		"provider":               result.Provider,
+		"barcode":                result.Barcode,
+		"source_tier":            result.SourceTier,
+		"provider_confidence":    result.ProviderConfidence,
+		"nutrition_completeness": result.NutritionCompleteness,
+		"lookup_trail":           result.LookupTrail,
+		"from_override":          result.FromOverride,
+		"from_cache":             result.FromCache,
+		"servings":               servings,
+	}
+	if strings.TrimSpace(userMetadata) != "" {
+		user, err := parseMetadataObject(userMetadata)
+		if err != nil {
+			return "", err
+		}
+		for k, v := range user {
+			metadata[k] = v
+		}
+	}
+	b, err := json.Marshal(metadata)
+	if err != nil {
+		return "", fmt.Errorf("marshal barcode entry metadata: %w", err)
+	}
+	return string(b), nil
+}
+
+func parseMetadataObject(value string) (map[string]any, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return map[string]any{}, nil
+	}
+	var out map[string]any
+	if err := json.Unmarshal([]byte(value), &out); err != nil {
+		return nil, fmt.Errorf("--metadata-json must be a valid JSON object: %w", err)
+	}
+	return out, nil
 }
 
 func init() {
@@ -245,6 +303,7 @@ func init() {
 	entryListCmd.Flags().StringVar(&listToDate, "to", "", "Filter to date YYYY-MM-DD")
 	entryListCmd.Flags().StringVar(&listCategory, "category", "", "Filter by category")
 	entryListCmd.Flags().IntVar(&listLimit, "limit", 50, "Result limit")
+	entryListCmd.Flags().BoolVar(&listMetadata, "with-metadata", false, "Include metadata JSON column")
 
 	entryUpdateCmd.Flags().StringVar(&updateName, "name", "", "Entry name")
 	entryUpdateCmd.Flags().IntVar(&updateCalories, "calories", 0, "Calories")

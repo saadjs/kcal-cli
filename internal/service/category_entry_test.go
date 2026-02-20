@@ -1,6 +1,7 @@
 package service_test
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -72,5 +73,61 @@ func TestListEntriesRejectsConflictingDateFilters(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatalf("expected conflicting date filters to fail")
+	}
+}
+
+func TestCreateEntryStoresMetadataJSON(t *testing.T) {
+	t.Parallel()
+	db := newTestDB(t)
+	defer db.Close()
+
+	_, err := service.CreateEntry(db, service.CreateEntryInput{
+		Name:       "Metadata meal",
+		Calories:   100,
+		ProteinG:   10,
+		CarbsG:     10,
+		FatG:       2,
+		Category:   "breakfast",
+		Consumed:   time.Date(2026, 2, 20, 8, 0, 0, 0, time.Local),
+		SourceType: "manual",
+		Metadata:   `{"tag":"check","source":"import"}`,
+	})
+	if err != nil {
+		t.Fatalf("create entry with metadata: %v", err)
+	}
+
+	entries, err := service.ListEntries(db, service.ListEntriesFilter{
+		Date:  "2026-02-20",
+		Limit: 5,
+	})
+	if err != nil {
+		t.Fatalf("list entries: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	if !strings.Contains(entries[0].Metadata, `"tag":"check"`) {
+		t.Fatalf("expected metadata to be stored, got: %s", entries[0].Metadata)
+	}
+}
+
+func TestCreateEntryRejectsInvalidMetadataJSON(t *testing.T) {
+	t.Parallel()
+	db := newTestDB(t)
+	defer db.Close()
+
+	_, err := service.CreateEntry(db, service.CreateEntryInput{
+		Name:       "Bad metadata meal",
+		Calories:   100,
+		ProteinG:   10,
+		CarbsG:     10,
+		FatG:       2,
+		Category:   "breakfast",
+		Consumed:   time.Date(2026, 2, 20, 8, 0, 0, 0, time.Local),
+		SourceType: "manual",
+		Metadata:   `{"tag":`,
+	})
+	if err == nil {
+		t.Fatalf("expected invalid metadata JSON to fail")
 	}
 }

@@ -195,6 +195,29 @@ func TestCLIEntryListRejectsConflictingDateFilters(t *testing.T) {
 	}
 }
 
+func TestCLIEntryAddRejectsInvalidMetadataJSON(t *testing.T) {
+	binPath := buildKcalBinary(t)
+	dbPath := filepath.Join(t.TempDir(), "kcal.db")
+	initDB(t, binPath, dbPath)
+
+	_, stderr, exit := runKcal(t, binPath, dbPath,
+		"entry", "add",
+		"--name", "x",
+		"--calories", "10",
+		"--protein", "1",
+		"--carbs", "1",
+		"--fat", "1",
+		"--category", "breakfast",
+		"--metadata-json", `{"bad":`,
+	)
+	if exit == 0 {
+		t.Fatalf("expected invalid metadata JSON to fail")
+	}
+	if !strings.Contains(stderr, "entry metadata must be valid JSON") {
+		t.Fatalf("expected metadata json validation error in stderr, got: %s", stderr)
+	}
+}
+
 func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }

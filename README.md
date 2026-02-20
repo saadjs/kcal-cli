@@ -43,6 +43,8 @@ go build -o kcal .
 - `kcal init`
 - `kcal category add|list|rename|delete`
 - `kcal entry add|list|update|delete`
+  - `entry add` supports `--metadata-json '{...}'`
+  - `entry list` supports `--with-metadata`
 - `kcal goal set|current|history`
 - `kcal body add|list|update|delete`
 - `kcal body-goal set|current|history`
