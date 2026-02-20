@@ -5,8 +5,10 @@ url: "https://saadjs.github.io"
 theme: minima
 markdown: kramdown
 permalink: pretty
+header_pages: []
 
 # Publish docs as a single page on GitHub Pages
+# Default all docs pages to unpublished, then explicitly publish only index.md.
 defaults:
   - scope:
       path: ""
