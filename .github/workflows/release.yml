@@ -80,7 +80,7 @@ jobs:
       - name: Checkout tap
         uses: actions/checkout@v4
         with:
-          repository: saadjs/homebrew-kcal
+          repository: saadjs/kcal
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           path: tap
 
