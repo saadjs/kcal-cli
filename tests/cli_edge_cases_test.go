@@ -177,6 +177,24 @@ func TestCLIRecipeShowRejectsPartialNumericIdentifier(t *testing.T) {
 	}
 }
 
+func TestCLIEntryListRejectsConflictingDateFilters(t *testing.T) {
+	binPath := buildKcalBinary(t)
+	dbPath := filepath.Join(t.TempDir(), "kcal.db")
+	initDB(t, binPath, dbPath)
+
+	_, stderr, exit := runKcal(t, binPath, dbPath,
+		"entry", "list",
+		"--date", "2026-02-20",
+		"--from", "2026-02-01",
+	)
+	if exit == 0 {
+		t.Fatalf("expected non-zero exit for conflicting date filters")
+	}
+	if !strings.Contains(stderr, "--date cannot be combined with --from or --to") {
+		t.Fatalf("expected conflicting filter error in stderr, got: %s", stderr)
+	}
+}
+
 func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }

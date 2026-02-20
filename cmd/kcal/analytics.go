@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"time"
 
 	"github.com/saad/kcal-cli/internal/service"
@@ -115,9 +116,19 @@ func resolveWeekRange(week string) (time.Time, time.Time, error) {
 		start := beginningOfWeek(now)
 		return start, start.AddDate(0, 0, 6), nil
 	}
+	if !regexp.MustCompile(`^\d{4}-W\d{2}$`).MatchString(week) {
+		return time.Time{}, time.Time{}, fmt.Errorf("invalid --week value %q (expected YYYY-Www)", week)
+	}
 	var year, weekNum int
 	if _, err := fmt.Sscanf(week, "%4d-W%2d", &year, &weekNum); err != nil {
 		return time.Time{}, time.Time{}, fmt.Errorf("invalid --week value %q (expected YYYY-Www)", week)
+	}
+	if weekNum < 1 {
+		return time.Time{}, time.Time{}, fmt.Errorf("invalid --week value %q (week must be between 01 and %02d for %d)", week, weeksInISOYear(year), year)
+	}
+	maxWeek := weeksInISOYear(year)
+	if weekNum > maxWeek {
+		return time.Time{}, time.Time{}, fmt.Errorf("invalid --week value %q (week must be between 01 and %02d for %d)", week, maxWeek, year)
 	}
 	start := isoWeekStart(year, weekNum)
 	return start, start.AddDate(0, 0, 6), nil
@@ -156,6 +167,11 @@ func isoWeekStart(year, week int) time.Time {
 	}
 	week1Monday := jan4.AddDate(0, 0, -(weekday - 1))
 	return week1Monday.AddDate(0, 0, (week-1)*7)
+}
+
+func weeksInISOYear(year int) int {
+	_, wk := time.Date(year, 12, 28, 0, 0, 0, 0, time.Local).ISOWeek()
+	return wk
 }
 
 func init() {

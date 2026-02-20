@@ -60,3 +60,17 @@ func TestCategoryAndEntryLifecycle(t *testing.T) {
 		t.Fatalf("expected reassigned entry count 1, got %d", len(reassigned))
 	}
 }
+
+func TestListEntriesRejectsConflictingDateFilters(t *testing.T) {
+	t.Parallel()
+	db := newTestDB(t)
+	defer db.Close()
+
+	_, err := service.ListEntries(db, service.ListEntriesFilter{
+		Date:     "2026-02-20",
+		FromDate: "2026-02-01",
+	})
+	if err == nil {
+		t.Fatalf("expected conflicting date filters to fail")
+	}
+}

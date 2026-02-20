@@ -85,6 +85,10 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 }
 
 func ListEntries(db *sql.DB, f ListEntriesFilter) ([]model.Entry, error) {
+	if err := validateListEntriesFilter(f); err != nil {
+		return nil, err
+	}
+
 	query := `
 SELECT e.id, e.name, e.calories, e.protein_g, e.carbs_g, e.fat_g, e.category_id, c.name, e.consumed_at, IFNULL(e.notes, ''), e.source_type, e.source_id
 FROM entries e
@@ -253,4 +257,11 @@ func parseDateEndExclusive(value string) (string, error) {
 		return "", fmt.Errorf("parse end date %q: %w", value, err)
 	}
 	return t.Add(24 * time.Hour).Format(time.RFC3339), nil
+}
+
+func validateListEntriesFilter(f ListEntriesFilter) error {
+	if strings.TrimSpace(f.Date) != "" && (strings.TrimSpace(f.FromDate) != "" || strings.TrimSpace(f.ToDate) != "") {
+		return fmt.Errorf("--date cannot be combined with --from or --to")
+	}
+	return nil
 }
