@@ -85,10 +85,10 @@ For provider setup, limits, overrides, and cache workflows, see docs below.
 
 ## Documentation
 
-- GitHub Pages docs: `https://saadjs.github.io/kcal/`
-- Local docs index: `/Users/saad/src/kcal-cli/docs/index.md`
-- Commands reference: `/Users/saad/src/kcal-cli/docs/reference/commands.md`
-- Barcode providers guide: `/Users/saad/src/kcal-cli/docs/guides/barcode-providers.md`
+- GitHub Pages docs: <https://saadjs.github.io/kcal/>
+- Local docs index: [`docs/index.md`](docs/index.md)
+- Commands reference: [`docs/reference/commands.md`](docs/reference/commands.md)
+- Barcode providers guide: [`docs/guides/barcode-providers.md`](docs/guides/barcode-providers.md)
 
 ## Development
 
@@ -100,5 +100,5 @@ Run checks locally before releases or major changes.
 
 ## Project Files
 
-- Changelog: `/Users/saad/src/kcal-cli/CHANGELOG.md`
-- License: `/Users/saad/src/kcal-cli/LICENSE`
+- Changelog: [`CHANGELOG.md`](CHANGELOG.md)
+- License: [`LICENSE`](LICENSE)
