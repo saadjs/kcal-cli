@@ -29,8 +29,8 @@ func TestApplyMigrationsIdempotentAndSeedsDefaults(t *testing.T) {
 	if err := sqldb.QueryRow(`SELECT COUNT(1) FROM schema_migrations`).Scan(&migrationCount); err != nil {
 		t.Fatalf("count migrations: %v", err)
 	}
-	if migrationCount != 7 {
-		t.Fatalf("expected 7 migration versions, got %d", migrationCount)
+	if migrationCount != 9 {
+		t.Fatalf("expected 9 migration versions, got %d", migrationCount)
 	}
 
 	var metadataColCount int
@@ -47,6 +47,54 @@ func TestApplyMigrationsIdempotentAndSeedsDefaults(t *testing.T) {
 	}
 	if configTableCount != 1 {
 		t.Fatalf("expected app_config table to exist")
+	}
+
+	var exerciseTableCount int
+	if err := sqldb.QueryRow(`SELECT COUNT(1) FROM sqlite_master WHERE type = 'table' AND name = 'exercise_logs'`).Scan(&exerciseTableCount); err != nil {
+		t.Fatalf("check exercise_logs table: %v", err)
+	}
+	if exerciseTableCount != 1 {
+		t.Fatalf("expected exercise_logs table to exist")
+	}
+
+	var exerciseMetadataColCount int
+	if err := sqldb.QueryRow(`SELECT COUNT(1) FROM pragma_table_info('exercise_logs') WHERE name = 'metadata_json'`).Scan(&exerciseMetadataColCount); err != nil {
+		t.Fatalf("check exercise_logs metadata column: %v", err)
+	}
+	if exerciseMetadataColCount != 1 {
+		t.Fatalf("expected metadata_json column in exercise_logs table")
+	}
+
+	var entriesFiberColCount int
+	if err := sqldb.QueryRow(`SELECT COUNT(1) FROM pragma_table_info('entries') WHERE name = 'fiber_g'`).Scan(&entriesFiberColCount); err != nil {
+		t.Fatalf("check entries fiber_g column: %v", err)
+	}
+	if entriesFiberColCount != 1 {
+		t.Fatalf("expected fiber_g column in entries table")
+	}
+
+	var entriesMicrosColCount int
+	if err := sqldb.QueryRow(`SELECT COUNT(1) FROM pragma_table_info('entries') WHERE name = 'micronutrients_json'`).Scan(&entriesMicrosColCount); err != nil {
+		t.Fatalf("check entries micronutrients_json column: %v", err)
+	}
+	if entriesMicrosColCount != 1 {
+		t.Fatalf("expected micronutrients_json column in entries table")
+	}
+
+	var cacheMicrosColCount int
+	if err := sqldb.QueryRow(`SELECT COUNT(1) FROM pragma_table_info('barcode_cache') WHERE name = 'micronutrients_json'`).Scan(&cacheMicrosColCount); err != nil {
+		t.Fatalf("check barcode_cache micronutrients_json column: %v", err)
+	}
+	if cacheMicrosColCount != 1 {
+		t.Fatalf("expected micronutrients_json column in barcode_cache table")
+	}
+
+	var overrideMicrosColCount int
+	if err := sqldb.QueryRow(`SELECT COUNT(1) FROM pragma_table_info('barcode_overrides') WHERE name = 'micronutrients_json'`).Scan(&overrideMicrosColCount); err != nil {
+		t.Fatalf("check barcode_overrides micronutrients_json column: %v", err)
+	}
+	if overrideMicrosColCount != 1 {
+		t.Fatalf("expected micronutrients_json column in barcode_overrides table")
 	}
 
 	var categoryCount int

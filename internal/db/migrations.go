@@ -187,6 +187,47 @@ CREATE TABLE IF NOT EXISTS app_config (
 );
 `,
 	},
+	{
+		version: 8,
+		name:    "exercise_logs",
+		sql: `
+CREATE TABLE IF NOT EXISTS exercise_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  exercise_type TEXT NOT NULL,
+  calories_burned INTEGER NOT NULL CHECK(calories_burned > 0),
+  duration_min INTEGER CHECK(duration_min > 0),
+  distance REAL CHECK(distance > 0),
+  distance_unit TEXT CHECK(distance_unit IN ('km', 'mi')),
+  performed_at DATETIME NOT NULL,
+  notes TEXT,
+  metadata_json TEXT NOT NULL DEFAULT '',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_exercise_logs_performed_at ON exercise_logs(performed_at);
+`,
+	},
+	{
+		version: 9,
+		name:    "micronutrients",
+		sql: `
+ALTER TABLE entries ADD COLUMN fiber_g REAL NOT NULL DEFAULT 0 CHECK(fiber_g >= 0);
+ALTER TABLE entries ADD COLUMN sugar_g REAL NOT NULL DEFAULT 0 CHECK(sugar_g >= 0);
+ALTER TABLE entries ADD COLUMN sodium_mg REAL NOT NULL DEFAULT 0 CHECK(sodium_mg >= 0);
+ALTER TABLE entries ADD COLUMN micronutrients_json TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE barcode_cache ADD COLUMN fiber_g REAL NOT NULL DEFAULT 0 CHECK(fiber_g >= 0);
+ALTER TABLE barcode_cache ADD COLUMN sugar_g REAL NOT NULL DEFAULT 0 CHECK(sugar_g >= 0);
+ALTER TABLE barcode_cache ADD COLUMN sodium_mg REAL NOT NULL DEFAULT 0 CHECK(sodium_mg >= 0);
+ALTER TABLE barcode_cache ADD COLUMN micronutrients_json TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE barcode_overrides ADD COLUMN fiber_g REAL NOT NULL DEFAULT 0 CHECK(fiber_g >= 0);
+ALTER TABLE barcode_overrides ADD COLUMN sugar_g REAL NOT NULL DEFAULT 0 CHECK(sugar_g >= 0);
+ALTER TABLE barcode_overrides ADD COLUMN sodium_mg REAL NOT NULL DEFAULT 0 CHECK(sodium_mg >= 0);
+ALTER TABLE barcode_overrides ADD COLUMN micronutrients_json TEXT NOT NULL DEFAULT '';
+`,
+	},
 }
 
 var defaultCategories = []string{"breakfast", "lunch", "dinner", "snacks"}

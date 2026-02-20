@@ -122,6 +122,18 @@ func TestDayInTheLifeFlow(t *testing.T) {
 		t.Fatalf("recipe log failed: exit=%d stderr=%s", exit, stderr)
 	}
 
+	_, stderr, exit = runKcal(t, binPath, dbPath,
+		"exercise", "add",
+		"--type", "running",
+		"--calories", "300",
+		"--duration-min", "35",
+		"--date", "2026-02-20",
+		"--time", "18:30",
+	)
+	if exit != 0 {
+		t.Fatalf("exercise add failed: exit=%d stderr=%s", exit, stderr)
+	}
+
 	stdout, stderr, exit := runKcal(t, binPath, dbPath,
 		"analytics", "range",
 		"--from", "2026-02-20",
@@ -133,7 +145,7 @@ func TestDayInTheLifeFlow(t *testing.T) {
 
 	checks := []string{
 		"Range: 2026-02-20 to 2026-02-20",
-		"Totals: kcal=665",
+		"Totals: intake=665 exercise=300 net=365",
 		"supper",
 		"breakfast",
 		"Body",

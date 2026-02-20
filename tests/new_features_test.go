@@ -66,6 +66,105 @@ func TestBodyCommandsAndAnalyticsJSONBodySection(t *testing.T) {
 	}
 }
 
+func TestExerciseCommandsAndAnalyticsJSONFields(t *testing.T) {
+	binPath := buildKcalBinary(t)
+	dbPath := filepath.Join(t.TempDir(), "kcal.db")
+	initDB(t, binPath, dbPath)
+
+	_, stderr, exit := runKcal(t, binPath, dbPath,
+		"goal", "set",
+		"--calories", "2200",
+		"--protein", "160",
+		"--carbs", "240",
+		"--fat", "70",
+		"--effective-date", "2026-02-01",
+	)
+	if exit != 0 {
+		t.Fatalf("goal set failed: exit=%d stderr=%s", exit, stderr)
+	}
+
+	_, stderr, exit = runKcal(t, binPath, dbPath,
+		"entry", "add",
+		"--name", "Lunch",
+		"--calories", "900",
+		"--protein", "50",
+		"--carbs", "100",
+		"--fat", "25",
+		"--category", "lunch",
+		"--date", "2026-02-20",
+		"--time", "12:00",
+	)
+	if exit != 0 {
+		t.Fatalf("entry add failed: exit=%d stderr=%s", exit, stderr)
+	}
+
+	_, stderr, exit = runKcal(t, binPath, dbPath,
+		"exercise", "add",
+		"--type", "cycling",
+		"--calories", "500",
+		"--duration-min", "60",
+		"--distance", "22.5",
+		"--distance-unit", "km",
+		"--date", "2026-02-20",
+		"--time", "18:00",
+		"--notes", "tempo ride",
+	)
+	if exit != 0 {
+		t.Fatalf("exercise add failed: exit=%d stderr=%s", exit, stderr)
+	}
+
+	stdout, stderr, exit := runKcal(t, binPath, dbPath, "exercise", "list", "--date", "2026-02-20")
+	if exit != 0 {
+		t.Fatalf("exercise list failed: exit=%d stderr=%s", exit, stderr)
+	}
+	if !strings.Contains(stdout, "cycling") || !strings.Contains(stdout, "\t500\t") {
+		t.Fatalf("expected exercise list output, got:\n%s", stdout)
+	}
+
+	_, stderr, exit = runKcal(t, binPath, dbPath,
+		"exercise", "update", "1",
+		"--type", "cycling",
+		"--calories", "520",
+		"--duration-min", "62",
+		"--distance", "23.2",
+		"--distance-unit", "km",
+		"--date", "2026-02-20",
+		"--time", "18:10",
+	)
+	if exit != 0 {
+		t.Fatalf("exercise update failed: exit=%d stderr=%s", exit, stderr)
+	}
+
+	stdout, stderr, exit = runKcal(t, binPath, dbPath, "analytics", "range", "--from", "2026-02-20", "--to", "2026-02-20", "--json")
+	if exit != 0 {
+		t.Fatalf("analytics json failed: exit=%d stderr=%s", exit, stderr)
+	}
+	for _, want := range []string{
+		`"total_intake_calories"`,
+		`"total_exercise_calories"`,
+		`"total_net_calories"`,
+		`"avg_intake_calories_per_day"`,
+		`"avg_exercise_calories_per_day"`,
+		`"avg_net_calories_per_day"`,
+		`"intake_calories"`,
+		`"exercise_calories"`,
+		`"net_calories"`,
+		`"effective_goal_calories"`,
+		`"effective_goal_protein_g"`,
+		`"effective_goal_carbs_g"`,
+		`"effective_goal_fat_g"`,
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("expected analytics json to contain %q, got:\n%s", want, stdout)
+		}
+	}
+
+	_, stderr, exit = runKcal(t, binPath, dbPath, "exercise", "delete", "1")
+	if exit != 0 {
+		t.Fatalf("exercise delete failed: exit=%d stderr=%s", exit, stderr)
+	}
+}
+
 func TestRecipeIngredientLifecycleAndRecalc(t *testing.T) {
 	binPath := buildKcalBinary(t)
 	dbPath := filepath.Join(t.TempDir(), "kcal.db")
@@ -438,5 +537,91 @@ func TestExportImportJSONRoundTrip(t *testing.T) {
 	}
 	if !strings.Contains(listOut, "Portable Meal") || !strings.Contains(listOut, `"portable":true`) {
 		t.Fatalf("expected imported entry and metadata in list output, got: %s", listOut)
+	}
+}
+
+func TestImportDryRunDoesNotWrite(t *testing.T) {
+	binPath := buildKcalBinary(t)
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "kcal.db")
+	importDB := filepath.Join(dir, "kcal-import.db")
+	exportPath := filepath.Join(dir, "export.json")
+	initDB(t, binPath, dbPath)
+
+	_, stderr, exit := runKcal(t, binPath, dbPath, "entry", "add",
+		"--name", "DryRun Meal",
+		"--calories", "250",
+		"--protein", "20",
+		"--carbs", "20",
+		"--fat", "10",
+		"--category", "lunch",
+		"--date", "2026-02-20",
+		"--time", "13:00",
+	)
+	if exit != 0 {
+		t.Fatalf("seed entry failed: exit=%d stderr=%s", exit, stderr)
+	}
+	_, stderr, exit = runKcal(t, binPath, dbPath, "export", "--format", "json", "--out", exportPath)
+	if exit != 0 {
+		t.Fatalf("export json failed: exit=%d stderr=%s", exit, stderr)
+	}
+
+	initDB(t, binPath, importDB)
+	_, stderr, exit = runKcal(t, binPath, importDB, "import", "--format", "json", "--in", exportPath, "--dry-run")
+	if exit != 0 {
+		t.Fatalf("import dry-run failed: exit=%d stderr=%s", exit, stderr)
+	}
+	listOut, stderr, exit := runKcal(t, binPath, importDB, "entry", "list")
+	if exit != 0 {
+		t.Fatalf("entry list failed: exit=%d stderr=%s", exit, stderr)
+	}
+	if strings.Contains(listOut, "DryRun Meal") {
+		t.Fatalf("expected dry-run import to not write data, got: %s", listOut)
+	}
+}
+
+func TestBackupCreateAndRestore(t *testing.T) {
+	binPath := buildKcalBinary(t)
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "kcal.db")
+	initDB(t, binPath, dbPath)
+
+	_, stderr, exit := runKcal(t, binPath, dbPath, "entry", "add",
+		"--name", "Backup Meal",
+		"--calories", "300",
+		"--protein", "25",
+		"--carbs", "20",
+		"--fat", "12",
+		"--category", "dinner",
+		"--date", "2026-02-20",
+		"--time", "18:30",
+	)
+	if exit != 0 {
+		t.Fatalf("seed entry failed: exit=%d stderr=%s", exit, stderr)
+	}
+
+	backupFile := filepath.Join(dir, "snapshots", "bk.db")
+	_, stderr, exit = runKcal(t, binPath, dbPath, "backup", "create", "--out", backupFile)
+	if exit != 0 {
+		t.Fatalf("backup create failed: exit=%d stderr=%s", exit, stderr)
+	}
+	if _, err := os.Stat(backupFile); err != nil {
+		t.Fatalf("expected backup file: %v", err)
+	}
+	if _, err := os.Stat(backupFile + ".sha256"); err != nil {
+		t.Fatalf("expected checksum file: %v", err)
+	}
+
+	restoredDB := filepath.Join(dir, "restored.db")
+	_, stderr, exit = runKcal(t, binPath, restoredDB, "backup", "restore", "--file", backupFile)
+	if exit != 0 {
+		t.Fatalf("backup restore failed: exit=%d stderr=%s", exit, stderr)
+	}
+	listOut, stderr, exit := runKcal(t, binPath, restoredDB, "entry", "list")
+	if exit != 0 {
+		t.Fatalf("entry list on restored db failed: exit=%d stderr=%s", exit, stderr)
+	}
+	if !strings.Contains(listOut, "Backup Meal") {
+		t.Fatalf("expected restored entry in db, got: %s", listOut)
 	}
 }

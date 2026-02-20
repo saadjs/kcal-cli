@@ -19,6 +19,8 @@ var (
 	exportOut    string
 	importFormat string
 	importIn     string
+	importMode   string
+	importDryRun bool
 )
 
 var exportCmd = &cobra.Command{
@@ -106,8 +108,16 @@ var importCmd = &cobra.Command{
 				if err := json.Unmarshal(raw, &payload); err != nil {
 					return fmt.Errorf("parse import json: %w", err)
 				}
-				if err := service.ImportDataSnapshot(sqldb, &payload); err != nil {
+				report, err := service.ImportDataSnapshotWithOptions(sqldb, &payload, service.ImportOptions{
+					Mode:   service.ImportMode(strings.ToLower(strings.TrimSpace(importMode))),
+					DryRun: importDryRun,
+				})
+				if err != nil {
 					return err
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "Import report: inserted=%d updated=%d skipped=%d conflicts=%d\n", report.Inserted, report.Updated, report.Skipped, report.Conflicts)
+				for _, w := range report.Warnings {
+					fmt.Fprintf(cmd.OutOrStdout(), "warning: %s\n", w)
 				}
 			case "csv":
 				f, err := os.Open(importIn)
@@ -141,6 +151,9 @@ var importCmd = &cobra.Command{
 					if err != nil {
 						return fmt.Errorf("csv row %d consumed_at: %w", i+1, err)
 					}
+					if importDryRun {
+						continue
+					}
 					if _, err := service.CreateEntry(sqldb, service.CreateEntryInput{
 						Name:       row[0],
 						Calories:   kcal,
@@ -159,6 +172,10 @@ var importCmd = &cobra.Command{
 				}
 			default:
 				return fmt.Errorf("unsupported --format %q (use json or csv)", importFormat)
+			}
+			if importDryRun {
+				fmt.Fprintf(cmd.OutOrStdout(), "Dry-run import validated %s\n", importIn)
+				return nil
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Imported data from %s\n", importIn)
 			return nil
@@ -183,4 +200,6 @@ func init() {
 	exportCmd.Flags().StringVar(&exportOut, "out", "", "Output file path")
 	importCmd.Flags().StringVar(&importFormat, "format", "json", "Import format: json or csv")
 	importCmd.Flags().StringVar(&importIn, "in", "", "Input file path")
+	importCmd.Flags().StringVar(&importMode, "mode", "merge", "Import mode for JSON: fail|skip|merge|replace")
+	importCmd.Flags().BoolVar(&importDryRun, "dry-run", false, "Validate and report without writing data")
 }
