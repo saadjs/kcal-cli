@@ -120,6 +120,127 @@ var recipeDeleteCmd = &cobra.Command{
 	},
 }
 
+var recipeRecalcCmd = &cobra.Command{
+	Use:   "recalc <id|name>",
+	Short: "Recalculate recipe totals from ingredients",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return withDB(func(sqldb *sql.DB) error {
+			if err := service.RecalculateRecipeTotals(sqldb, args[0]); err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Recalculated recipe %q totals\n", args[0])
+			return nil
+		})
+	},
+}
+
+var recipeIngredientCmd = &cobra.Command{
+	Use:   "ingredient",
+	Short: "Manage recipe ingredients",
+}
+
+var (
+	ingredientName     string
+	ingredientAmount   float64
+	ingredientUnit     string
+	ingredientCalories int
+	ingredientProtein  float64
+	ingredientCarbs    float64
+	ingredientFat      float64
+)
+
+var recipeIngredientAddCmd = &cobra.Command{
+	Use:   "add <recipe-id|name>",
+	Short: "Add ingredient to recipe",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		in := service.RecipeIngredientInput{
+			Name:       ingredientName,
+			Amount:     ingredientAmount,
+			AmountUnit: ingredientUnit,
+			Calories:   ingredientCalories,
+			ProteinG:   ingredientProtein,
+			CarbsG:     ingredientCarbs,
+			FatG:       ingredientFat,
+		}
+		return withDB(func(sqldb *sql.DB) error {
+			id, err := service.AddRecipeIngredient(sqldb, args[0], in)
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Added ingredient %d\n", id)
+			return nil
+		})
+	},
+}
+
+var recipeIngredientListCmd = &cobra.Command{
+	Use:   "list <recipe-id|name>",
+	Short: "List ingredients for a recipe",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return withDB(func(sqldb *sql.DB) error {
+			items, err := service.ListRecipeIngredients(sqldb, args[0])
+			if err != nil {
+				return err
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "ID\tNAME\tAMOUNT\tUNIT\tKCAL\tP\tC\tF")
+			for _, it := range items {
+				fmt.Fprintf(cmd.OutOrStdout(), "%d\t%s\t%.2f\t%s\t%d\t%.1f\t%.1f\t%.1f\n", it.ID, it.Name, it.Amount, it.AmountUnit, it.Calories, it.ProteinG, it.CarbsG, it.FatG)
+			}
+			return nil
+		})
+	},
+}
+
+var recipeIngredientUpdateCmd = &cobra.Command{
+	Use:   "update <ingredient-id>",
+	Short: "Update recipe ingredient",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		id, err := parseInt64Arg("ingredient id", args[0])
+		if err != nil {
+			return err
+		}
+		in := service.RecipeIngredientInput{
+			Name:       ingredientName,
+			Amount:     ingredientAmount,
+			AmountUnit: ingredientUnit,
+			Calories:   ingredientCalories,
+			ProteinG:   ingredientProtein,
+			CarbsG:     ingredientCarbs,
+			FatG:       ingredientFat,
+		}
+		return withDB(func(sqldb *sql.DB) error {
+			if err := service.UpdateRecipeIngredient(sqldb, id, in); err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Updated ingredient %d\n", id)
+			return nil
+		})
+	},
+}
+
+var recipeIngredientDeleteCmd = &cobra.Command{
+	Use:   "delete <ingredient-id>",
+	Short: "Delete recipe ingredient",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		id, err := parseInt64Arg("ingredient id", args[0])
+		if err != nil {
+			return err
+		}
+		return withDB(func(sqldb *sql.DB) error {
+			if err := service.DeleteRecipeIngredient(sqldb, id); err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Deleted ingredient %d\n", id)
+			return nil
+		})
+	},
+}
+
 var (
 	logRecipeServings float64
 	logRecipeCategory string
@@ -167,7 +288,8 @@ func bindRecipeFields(cmd *cobra.Command) {
 
 func init() {
 	rootCmd.AddCommand(recipeCmd)
-	recipeCmd.AddCommand(recipeAddCmd, recipeListCmd, recipeShowCmd, recipeUpdateCmd, recipeDeleteCmd, recipeLogCmd)
+	recipeCmd.AddCommand(recipeAddCmd, recipeListCmd, recipeShowCmd, recipeUpdateCmd, recipeDeleteCmd, recipeRecalcCmd, recipeLogCmd, recipeIngredientCmd)
+	recipeIngredientCmd.AddCommand(recipeIngredientAddCmd, recipeIngredientListCmd, recipeIngredientUpdateCmd, recipeIngredientDeleteCmd)
 
 	bindRecipeFields(recipeAddCmd)
 	_ = recipeAddCmd.MarkFlagRequired("name")
@@ -192,4 +314,21 @@ func init() {
 	recipeLogCmd.Flags().StringVar(&logRecipeNotes, "notes", "", "Optional notes")
 	_ = recipeLogCmd.MarkFlagRequired("servings")
 	_ = recipeLogCmd.MarkFlagRequired("category")
+
+	for _, c := range []*cobra.Command{recipeIngredientAddCmd, recipeIngredientUpdateCmd} {
+		c.Flags().StringVar(&ingredientName, "name", "", "Ingredient name")
+		c.Flags().Float64Var(&ingredientAmount, "amount", 0, "Ingredient amount")
+		c.Flags().StringVar(&ingredientUnit, "unit", "", "Ingredient unit")
+		c.Flags().IntVar(&ingredientCalories, "calories", 0, "Ingredient calories")
+		c.Flags().Float64Var(&ingredientProtein, "protein", 0, "Ingredient protein grams")
+		c.Flags().Float64Var(&ingredientCarbs, "carbs", 0, "Ingredient carbs grams")
+		c.Flags().Float64Var(&ingredientFat, "fat", 0, "Ingredient fat grams")
+		_ = c.MarkFlagRequired("name")
+		_ = c.MarkFlagRequired("amount")
+		_ = c.MarkFlagRequired("unit")
+		_ = c.MarkFlagRequired("calories")
+		_ = c.MarkFlagRequired("protein")
+		_ = c.MarkFlagRequired("carbs")
+		_ = c.MarkFlagRequired("fat")
+	}
 }

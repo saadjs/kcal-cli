@@ -108,6 +108,24 @@ func printAnalyticsTable(cmd *cobra.Command, r *service.AnalyticsReport) {
 	for _, c := range r.ByCategory {
 		fmt.Fprintf(out, "%s\t%d\t%.1f\t%.1f\t%.1f\n", c.Category, c.Calories, c.Protein, c.Carbs, c.Fat)
 	}
+
+	fmt.Fprintln(out, "\nBody")
+	fmt.Fprintf(out, "Measurements: %d\n", r.Body.MeasurementsCount)
+	if r.Body.MeasurementsCount > 0 {
+		fmt.Fprintf(out, "Weight: start=%.2fkg end=%.2fkg change=%.2fkg\n", r.Body.StartWeightKg, r.Body.EndWeightKg, r.Body.WeightChangeKg)
+		if r.Body.AvgWeeklyChangeKg != 0 {
+			fmt.Fprintf(out, "Avg weekly weight change: %.2fkg\n", r.Body.AvgWeeklyChangeKg)
+		}
+		if r.Body.StartBodyFatPct != nil && r.Body.EndBodyFatPct != nil {
+			fmt.Fprintf(out, "Body fat: start=%.2f%% end=%.2f%% change=%.2f%%\n", *r.Body.StartBodyFatPct, *r.Body.EndBodyFatPct, *r.Body.BodyFatChangePct)
+		}
+		if r.Body.StartLeanMassKg != nil && r.Body.EndLeanMassKg != nil {
+			fmt.Fprintf(out, "Lean mass: start=%.2fkg end=%.2fkg change=%.2fkg\n", *r.Body.StartLeanMassKg, *r.Body.EndLeanMassKg, *r.Body.LeanMassChangeKg)
+		}
+		if r.Body.GoalProgress != nil {
+			fmt.Fprintf(out, "Body goal progress: target %.2fkg, latest %.2fkg (delta %.2fkg)\n", r.Body.GoalProgress.TargetWeightKg, r.Body.GoalProgress.LatestWeightKg, r.Body.GoalProgress.WeightDeltaKg)
+		}
+	}
 }
 
 func resolveWeekRange(week string) (time.Time, time.Time, error) {

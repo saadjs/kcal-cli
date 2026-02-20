@@ -23,6 +23,39 @@ type DaySummary struct {
 	Fat      float64 `json:"fat_g"`
 }
 
+type BodyPoint struct {
+	Date       string   `json:"date"`
+	WeightKg   float64  `json:"weight_kg"`
+	BodyFatPct *float64 `json:"body_fat_pct,omitempty"`
+	LeanMassKg *float64 `json:"lean_mass_kg,omitempty"`
+}
+
+type BodyGoalProgress struct {
+	ActiveGoalEffectiveDate string   `json:"active_goal_effective_date,omitempty"`
+	TargetWeightKg          float64  `json:"target_weight_kg,omitempty"`
+	TargetBodyFatPct        *float64 `json:"target_body_fat_pct,omitempty"`
+	LatestWeightKg          float64  `json:"latest_weight_kg,omitempty"`
+	LatestBodyFatPct        *float64 `json:"latest_body_fat_pct,omitempty"`
+	WeightDeltaKg           float64  `json:"weight_delta_kg,omitempty"`
+	BodyFatDeltaPct         *float64 `json:"body_fat_delta_pct,omitempty"`
+}
+
+type BodySummary struct {
+	MeasurementsCount int               `json:"measurements_count"`
+	StartWeightKg     float64           `json:"start_weight_kg,omitempty"`
+	EndWeightKg       float64           `json:"end_weight_kg,omitempty"`
+	WeightChangeKg    float64           `json:"weight_change_kg,omitempty"`
+	AvgWeeklyChangeKg float64           `json:"avg_weekly_change_kg,omitempty"`
+	StartBodyFatPct   *float64          `json:"start_body_fat_pct,omitempty"`
+	EndBodyFatPct     *float64          `json:"end_body_fat_pct,omitempty"`
+	BodyFatChangePct  *float64          `json:"body_fat_change_pct,omitempty"`
+	StartLeanMassKg   *float64          `json:"start_lean_mass_kg,omitempty"`
+	EndLeanMassKg     *float64          `json:"end_lean_mass_kg,omitempty"`
+	LeanMassChangeKg  *float64          `json:"lean_mass_change_kg,omitempty"`
+	GoalProgress      *BodyGoalProgress `json:"goal_progress,omitempty"`
+	Points            []BodyPoint       `json:"points"`
+}
+
 type AnalyticsReport struct {
 	FromDate              string              `json:"from_date"`
 	ToDate                string              `json:"to_date"`
@@ -40,6 +73,7 @@ type AnalyticsReport struct {
 	Adherence             AdherenceSummary    `json:"adherence"`
 	ByCategory            []CategoryBreakdown `json:"by_category"`
 	Days                  []DaySummary        `json:"days"`
+	Body                  BodySummary         `json:"body"`
 }
 
 type AdherenceSummary struct {
@@ -94,6 +128,12 @@ func AnalyticsRange(db *sql.DB, from, to time.Time, tolerance float64) (*Analyti
 		return nil, err
 	}
 	report.Adherence = adherence
+
+	body, err := calculateBodySummary(db, from, to)
+	if err != nil {
+		return nil, err
+	}
+	report.Body = body
 
 	return report, nil
 }
@@ -176,6 +216,104 @@ func calculateAdherence(db *sql.DB, days []DaySummary, tolerance float64) (Adher
 		out.PercentWithin = (float64(out.WithinGoalDays) / float64(out.EvaluatedDays)) * 100
 	}
 	return out, nil
+}
+
+func calculateBodySummary(db *sql.DB, from, to time.Time) (BodySummary, error) {
+	rows, err := db.Query(`
+SELECT measured_at, weight_kg, body_fat_pct
+FROM body_measurements
+WHERE measured_at >= ? AND measured_at < ?
+ORDER BY measured_at ASC
+`, from.Format(time.RFC3339), to.Add(24*time.Hour).Format(time.RFC3339))
+	if err != nil {
+		return BodySummary{}, fmt.Errorf("query body measurements: %w", err)
+	}
+	defer rows.Close()
+
+	summary := BodySummary{Points: make([]BodyPoint, 0)}
+	for rows.Next() {
+		var measured string
+		var weight float64
+		var bodyFat sql.NullFloat64
+		if err := rows.Scan(&measured, &weight, &bodyFat); err != nil {
+			return BodySummary{}, fmt.Errorf("scan body measurement analytics row: %w", err)
+		}
+		t, err := time.Parse(time.RFC3339, measured)
+		if err != nil {
+			return BodySummary{}, fmt.Errorf("parse measured_at analytics row: %w", err)
+		}
+		p := BodyPoint{Date: t.Format("2006-01-02"), WeightKg: weight}
+		if bodyFat.Valid {
+			bf := bodyFat.Float64
+			p.BodyFatPct = &bf
+			lean := leanMassKg(weight, bf)
+			p.LeanMassKg = &lean
+		}
+		summary.Points = append(summary.Points, p)
+	}
+	if err := rows.Err(); err != nil {
+		return BodySummary{}, fmt.Errorf("iterate body measurements analytics rows: %w", err)
+	}
+
+	summary.MeasurementsCount = len(summary.Points)
+	if summary.MeasurementsCount == 0 {
+		return summary, nil
+	}
+
+	start := summary.Points[0]
+	end := summary.Points[summary.MeasurementsCount-1]
+	summary.StartWeightKg = start.WeightKg
+	summary.EndWeightKg = end.WeightKg
+	summary.WeightChangeKg = end.WeightKg - start.WeightKg
+
+	daysSpan := to.Sub(from).Hours() / 24
+	if daysSpan >= 7 {
+		summary.AvgWeeklyChangeKg = summary.WeightChangeKg / (daysSpan / 7)
+	}
+
+	if start.BodyFatPct != nil {
+		summary.StartBodyFatPct = start.BodyFatPct
+		summary.StartLeanMassKg = start.LeanMassKg
+	}
+	if end.BodyFatPct != nil {
+		summary.EndBodyFatPct = end.BodyFatPct
+		summary.EndLeanMassKg = end.LeanMassKg
+	}
+	if summary.StartBodyFatPct != nil && summary.EndBodyFatPct != nil {
+		delta := *summary.EndBodyFatPct - *summary.StartBodyFatPct
+		summary.BodyFatChangePct = &delta
+	}
+	if summary.StartLeanMassKg != nil && summary.EndLeanMassKg != nil {
+		delta := *summary.EndLeanMassKg - *summary.StartLeanMassKg
+		summary.LeanMassChangeKg = &delta
+	}
+
+	latest := end
+	goal, err := CurrentBodyGoal(db, end.Date)
+	if err != nil {
+		return BodySummary{}, err
+	}
+	if goal != nil {
+		progress := &BodyGoalProgress{
+			ActiveGoalEffectiveDate: goal.EffectiveDate,
+			TargetWeightKg:          goal.TargetWeightKg,
+			TargetBodyFatPct:        goal.TargetBodyFatPct,
+			LatestWeightKg:          latest.WeightKg,
+			LatestBodyFatPct:        latest.BodyFatPct,
+			WeightDeltaKg:           latest.WeightKg - goal.TargetWeightKg,
+		}
+		if goal.TargetBodyFatPct != nil && latest.BodyFatPct != nil {
+			delta := *latest.BodyFatPct - *goal.TargetBodyFatPct
+			progress.BodyFatDeltaPct = &delta
+		}
+		summary.GoalProgress = progress
+	}
+
+	return summary, nil
+}
+
+func leanMassKg(weightKg, bodyFatPct float64) float64 {
+	return weightKg * (1 - (bodyFatPct / 100))
 }
 
 func extremeDays(days []DaySummary) (*DaySummary, *DaySummary) {
