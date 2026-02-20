@@ -22,22 +22,27 @@ const (
 	usdaRateLimitSummary = "USDA default rate limit is 1,000 requests per hour per IP."
 	offAPIDocsURL        = "https://openfoodfacts.github.io/openfoodfacts-server/api/"
 	offRateLimitSummary  = "Open Food Facts enforces fair-use limits and requires a descriptive User-Agent."
+	upcDocsURL           = "https://devs.upcitemdb.com/"
+	upcLimitTrial        = "Trial endpoint: up to 100 requests/day."
+	upcLimitDev          = "DEV plan: up to 20,000 lookup/day and 2,000 search/day."
+	upcLimitPro          = "PRO plan: up to 150,000 lookup/day and 20,000 search/day."
 )
 
 var (
-	lookupProvider string
-	lookupAPIKey   string
-	lookupJSON     bool
-	overrideName   string
-	overrideBrand  string
-	overrideAmount float64
-	overrideUnit   string
-	overrideKcal   float64
-	overrideP      float64
-	overrideC      float64
-	overrideF      float64
-	overrideNotes  string
-	overrideLimit  int
+	lookupProvider   string
+	lookupAPIKey     string
+	lookupAPIKeyType string
+	lookupJSON       bool
+	overrideName     string
+	overrideBrand    string
+	overrideAmount   float64
+	overrideUnit     string
+	overrideKcal     float64
+	overrideP        float64
+	overrideC        float64
+	overrideF        float64
+	overrideNotes    string
+	overrideLimit    int
 )
 
 var lookupBarcodeCmd = &cobra.Command{
@@ -52,7 +57,10 @@ var lookupBarcodeCmd = &cobra.Command{
 		}
 		barcode := strings.TrimSpace(args[0])
 		return withDB(func(sqldb *sql.DB) error {
-			result, err := service.LookupBarcode(sqldb, provider, apiKey, barcode)
+			result, err := service.LookupBarcode(sqldb, provider, barcode, service.BarcodeLookupOptions{
+				APIKey:     apiKey,
+				APIKeyType: resolveProviderAPIKeyType(provider, lookupAPIKeyType),
+			})
 			if err != nil {
 				return err
 			}
@@ -246,12 +254,34 @@ func providersHelpText() string {
 	return `Available providers:
 - usda (default): requires API key
 - openfoodfacts: no API key required for basic usage
+- upcitemdb: trial mode without key, paid plans with API key
 
 Useful commands:
 - kcal lookup usda-help
 - kcal lookup openfoodfacts-help
-- kcal lookup barcode <code> --provider usda|openfoodfacts
+- kcal lookup upcitemdb-help
+- kcal lookup barcode <code> --provider usda|openfoodfacts|upcitemdb
 - kcal lookup override set|show|list|delete ...`
+}
+
+func upcItemDBHelpText() string {
+	return fmt.Sprintf(`UPCitemdb Barcode Setup
+
+1) Docs and plans:
+- Docs: %s
+- %s
+- %s
+- %s
+
+2) Configure in kcal:
+- Trial (no key): kcal lookup barcode <code> --provider upcitemdb
+- Paid: export KCAL_UPCITEMDB_API_KEY=your_key
+- Optional key type: export KCAL_UPCITEMDB_KEY_TYPE=3scale
+- One-off key: kcal lookup barcode <code> --provider upcitemdb --api-key your_key --api-key-type 3scale
+
+3) Notes:
+- UPCitemdb may return limited nutrition fields for some products.
+- Cache is enabled in kcal to reduce repeated provider requests.`, upcDocsURL, upcLimitTrial, upcLimitDev, upcLimitPro)
 }
 
 func resolveUSDAAPIKey(flagValue string) string {
@@ -287,9 +317,30 @@ func resolveProviderAPIKey(provider string, flagValue string) (string, error) {
 		return key, nil
 	case service.BarcodeProviderOpenFoodFacts, "off":
 		return "", nil
+	case service.BarcodeProviderUPCItemDB, "upc":
+		if strings.TrimSpace(flagValue) != "" {
+			return strings.TrimSpace(flagValue), nil
+		}
+		if v := strings.TrimSpace(os.Getenv("KCAL_UPCITEMDB_API_KEY")); v != "" {
+			return v, nil
+		}
+		return "", nil
 	default:
-		return "", fmt.Errorf("unsupported provider %q (use usda or openfoodfacts)", provider)
+		return "", fmt.Errorf("unsupported provider %q (use usda, openfoodfacts, or upcitemdb)", provider)
 	}
+}
+
+func resolveProviderAPIKeyType(provider string, flagValue string) string {
+	if provider != service.BarcodeProviderUPCItemDB && provider != "upc" {
+		return ""
+	}
+	if strings.TrimSpace(flagValue) != "" {
+		return strings.TrimSpace(flagValue)
+	}
+	if v := strings.TrimSpace(os.Getenv("KCAL_UPCITEMDB_KEY_TYPE")); v != "" {
+		return v
+	}
+	return "3scale"
 }
 
 var lookupOpenFoodFactsHelpCmd = &cobra.Command{
@@ -301,17 +352,27 @@ var lookupOpenFoodFactsHelpCmd = &cobra.Command{
 	},
 }
 
+var lookupUPCItemDBHelpCmd = &cobra.Command{
+	Use:   "upcitemdb-help",
+	Short: "Show setup and plan-limit guidance for UPCitemdb provider",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		fmt.Fprintln(cmd.OutOrStdout(), upcItemDBHelpText())
+		return nil
+	},
+}
+
 func init() {
 	rootCmd.AddCommand(lookupCmd)
-	lookupCmd.AddCommand(lookupBarcodeCmd, lookupProvidersCmd, lookupUSDAHelpCmd, lookupOpenFoodFactsHelpCmd, lookupOverrideCmd)
+	lookupCmd.AddCommand(lookupBarcodeCmd, lookupProvidersCmd, lookupUSDAHelpCmd, lookupOpenFoodFactsHelpCmd, lookupUPCItemDBHelpCmd, lookupOverrideCmd)
 	lookupOverrideCmd.AddCommand(lookupOverrideSetCmd, lookupOverrideShowCmd, lookupOverrideListCmd, lookupOverrideDeleteCmd)
 
-	lookupBarcodeCmd.Flags().StringVar(&lookupProvider, "provider", "", "Barcode provider: usda or openfoodfacts (or set KCAL_BARCODE_PROVIDER)")
-	lookupBarcodeCmd.Flags().StringVar(&lookupAPIKey, "api-key", "", "USDA API key (fallback: KCAL_USDA_API_KEY)")
+	lookupBarcodeCmd.Flags().StringVar(&lookupProvider, "provider", "", "Barcode provider: usda, openfoodfacts, or upcitemdb (or set KCAL_BARCODE_PROVIDER)")
+	lookupBarcodeCmd.Flags().StringVar(&lookupAPIKey, "api-key", "", "Provider API key (USDA/UPCitemdb)")
+	lookupBarcodeCmd.Flags().StringVar(&lookupAPIKeyType, "api-key-type", "", "Provider API key type (UPCitemdb, default: 3scale)")
 	lookupBarcodeCmd.Flags().BoolVar(&lookupJSON, "json", false, "Output as JSON")
 
 	for _, c := range []*cobra.Command{lookupOverrideSetCmd, lookupOverrideShowCmd, lookupOverrideListCmd, lookupOverrideDeleteCmd} {
-		c.Flags().StringVar(&lookupProvider, "provider", "", "Barcode provider: usda or openfoodfacts (default from KCAL_BARCODE_PROVIDER/usda)")
+		c.Flags().StringVar(&lookupProvider, "provider", "", "Barcode provider: usda, openfoodfacts, or upcitemdb (default from KCAL_BARCODE_PROVIDER/usda)")
 		c.Flags().BoolVar(&lookupJSON, "json", false, "Output as JSON")
 	}
 	lookupOverrideSetCmd.Flags().StringVar(&overrideName, "name", "", "Food name")

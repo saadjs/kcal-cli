@@ -10,12 +10,14 @@ import (
 	"time"
 
 	"github.com/saad/kcal-cli/internal/provider/openfoodfacts"
+	"github.com/saad/kcal-cli/internal/provider/upcitemdb"
 	"github.com/saad/kcal-cli/internal/provider/usda"
 )
 
 const (
 	BarcodeProviderUSDA          = "usda"
 	BarcodeProviderOpenFoodFacts = "openfoodfacts"
+	BarcodeProviderUPCItemDB     = "upcitemdb"
 	defaultBarcodeTTL            = 30 * 24 * time.Hour
 )
 
@@ -47,25 +49,32 @@ type BarcodeOverrideInput struct {
 	Notes         string
 }
 
+type BarcodeLookupOptions struct {
+	APIKey     string
+	APIKeyType string
+}
+
 type barcodeClient interface {
 	LookupBarcode(ctx context.Context, barcode string) (BarcodeLookupResult, []byte, error)
 }
 
 func LookupBarcodeUSDA(db *sql.DB, apiKey, barcode string) (BarcodeLookupResult, error) {
-	return LookupBarcode(db, BarcodeProviderUSDA, apiKey, barcode)
+	return LookupBarcode(db, BarcodeProviderUSDA, barcode, BarcodeLookupOptions{APIKey: apiKey})
 }
 
 func LookupBarcodeOpenFoodFacts(db *sql.DB, barcode string) (BarcodeLookupResult, error) {
-	return LookupBarcode(db, BarcodeProviderOpenFoodFacts, "", barcode)
+	return LookupBarcode(db, BarcodeProviderOpenFoodFacts, barcode, BarcodeLookupOptions{})
 }
 
-func LookupBarcode(db *sql.DB, provider, apiKey, barcode string) (BarcodeLookupResult, error) {
+func LookupBarcode(db *sql.DB, provider, barcode string, options BarcodeLookupOptions) (BarcodeLookupResult, error) {
 	p := strings.ToLower(strings.TrimSpace(provider))
 	switch p {
 	case "", BarcodeProviderUSDA:
-		return lookupBarcodeWithClient(db, BarcodeProviderUSDA, &usdaClientAdapter{client: &usda.Client{APIKey: apiKey}}, barcode)
+		return lookupBarcodeWithClient(db, BarcodeProviderUSDA, &usdaClientAdapter{client: &usda.Client{APIKey: options.APIKey}}, barcode)
 	case BarcodeProviderOpenFoodFacts, "off":
 		return lookupBarcodeWithClient(db, BarcodeProviderOpenFoodFacts, &openFoodFactsClientAdapter{client: &openfoodfacts.Client{}}, barcode)
+	case BarcodeProviderUPCItemDB, "upc":
+		return lookupBarcodeWithClient(db, BarcodeProviderUPCItemDB, &upcItemDBClientAdapter{client: &upcitemdb.Client{APIKey: options.APIKey, APIKeyType: options.APIKeyType}}, barcode)
 	default:
 		return BarcodeLookupResult{}, fmt.Errorf("unsupported barcode provider %q", provider)
 	}
@@ -135,6 +144,28 @@ type openFoodFactsClientAdapter struct {
 }
 
 func (a *openFoodFactsClientAdapter) LookupBarcode(ctx context.Context, barcode string) (BarcodeLookupResult, []byte, error) {
+	food, raw, err := a.client.LookupBarcode(ctx, barcode)
+	if err != nil {
+		return BarcodeLookupResult{}, nil, err
+	}
+	return BarcodeLookupResult{
+		Description:   food.Description,
+		Brand:         food.Brand,
+		ServingAmount: food.ServingAmount,
+		ServingUnit:   food.ServingUnit,
+		Calories:      food.Calories,
+		ProteinG:      food.ProteinG,
+		CarbsG:        food.CarbsG,
+		FatG:          food.FatG,
+		SourceID:      food.SourceID,
+	}, raw, nil
+}
+
+type upcItemDBClientAdapter struct {
+	client *upcitemdb.Client
+}
+
+func (a *upcItemDBClientAdapter) LookupBarcode(ctx context.Context, barcode string) (BarcodeLookupResult, []byte, error) {
 	food, raw, err := a.client.LookupBarcode(ctx, barcode)
 	if err != nil {
 		return BarcodeLookupResult{}, nil, err
